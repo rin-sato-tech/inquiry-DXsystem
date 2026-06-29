@@ -337,7 +337,7 @@ def parse_date_or_none(value: Any) -> date | None:
 
 ### 6. `show_create_form()`
 
-![alt text](<スクリーンショット 2026-06-28 午後9.06.41.png>)
+![alt text](<./streamlit_create_for_WBS5.png>)
 
 ```python
 def show_create_form() -> None:
@@ -449,7 +449,7 @@ record = {
 
 ### 7. `make_update_label()`
 
-![alt text](<スクリーンショット 2026-06-28 午後9.30.38.png>)
+![alt text](<./streamlit_update_for_WBS5.png>)
 
 ```python
 def make_update_label(row: pd.Series) -> str:

@@ -1,6 +1,6 @@
 # WBS-4: Streamlitの画面開発
 
-![alt text](<スクリーンショット 2026-06-28 午後6.54.08.png>)
+![alt text](<./streamlit_list_for_WBS4.png>)
 
 ## `aggregation.py`
 
