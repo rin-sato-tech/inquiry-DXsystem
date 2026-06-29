@@ -746,7 +746,6 @@ def main() -> None:
 
     with tab_summary:
         st.header("集計・CSV出力")
-        st.info("正式なCSV出力機能は後続フェーズで実装します。ここでは確認用の簡易集計を表示します。")
         show_simple_summary(df)
 
 
