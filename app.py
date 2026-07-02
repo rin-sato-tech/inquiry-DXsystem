@@ -21,6 +21,10 @@ from src.db import (
     update_inquiry,
     upsert_inquiry,
 )
+from src.category_fields import (
+    format_additional_info,
+    get_category_fields,
+)
 from src.master_data import (
     get_assignees,
     get_categories,
@@ -187,6 +191,7 @@ def show_inquiry_table(df: pd.DataFrame) -> None:
         "status",
         "overdue_flag",
         "detail",
+        "additional_info",
         "response_summary",
     ]
 
@@ -214,6 +219,7 @@ def show_inquiry_table(df: pd.DataFrame) -> None:
         "status": "ステータス",
         "overdue_flag": "期限超過",
         "detail": "問い合わせ内容",
+        "additional_info": "カテゴリ別追加情報",
         "response_summary": "対応内容",
     }
 
@@ -304,6 +310,58 @@ def show_alerts(df: pd.DataFrame) -> None:
         )
 
 
+def render_category_additional_fields(category: str) -> str:
+    """カテゴリに応じた追加入力項目を表示し、保存用テキストを返す。"""
+
+    fields = get_category_fields(category)
+
+    st.markdown("### カテゴリ別追加情報")
+    st.caption(
+        "カテゴリに応じて、初回問い合わせ時に確認しておきたい情報を入力します。"
+        "未入力でも登録できますが、入力すると管理部との確認往復を減らしやすくなります。"
+    )
+
+    values: dict[str, Any] = {}
+
+    if not fields:
+        free_text = st.text_area(
+            "追加情報",
+            height=90,
+            placeholder="このカテゴリで補足しておきたい情報を入力してください。",
+        )
+        return free_text.strip()
+
+    for field in fields:
+        widget_key = f"create_additional_{category}_{field.key}"
+
+        if field.field_type == "text_area":
+            values[field.key] = st.text_area(
+                field.label,
+                height=80,
+                key=widget_key,
+            )
+        elif field.field_type == "select":
+            values[field.key] = st.selectbox(
+                field.label,
+                field.options,
+                key=widget_key,
+            )
+        elif field.field_type == "date":
+            selected_date = st.date_input(
+                field.label,
+                value=None,
+                key=widget_key,
+            )
+            values[field.key] = selected_date.strftime("%Y-%m-%d") if selected_date else ""
+        else:
+            values[field.key] = st.text_input(
+                field.label,
+                key=widget_key,
+            )
+
+    return format_additional_info(category, values)
+
+
 def show_create_form() -> None:
     """新規問い合わせ登録フォームを表示する。"""
     st.header("新規登録")
@@ -315,6 +373,17 @@ def show_create_form() -> None:
     priorities = get_priorities()
     statuses = get_statuses()
     assignee_options = ["未設定"] + get_assignees()
+
+    st.markdown("### カテゴリ選択")
+    category = st.selectbox(
+        "カテゴリ *",
+        categories,
+        key="create_category",
+    )
+
+    st.caption(
+        "カテゴリを選択すると、下のフォームにカテゴリ別の追加入力項目が表示されます。"
+    )
 
     default_due_date = date.today() + timedelta(days=3)
 
@@ -331,7 +400,11 @@ def show_create_form() -> None:
             )
 
         with col2:
-            category = st.selectbox("カテゴリ *", categories)
+            st.text_input(
+                "カテゴリ *",
+                value=category,
+                disabled=True,
+            )
             subcategory = st.text_input("小分類")
             priority = st.selectbox(
                 "優先度 *",
@@ -350,6 +423,8 @@ def show_create_form() -> None:
 
         detail = st.text_area("問い合わせ内容 *", height=120)
         missing_info = st.text_area("不足情報・確認事項", height=80)
+
+        additional_info = render_category_additional_fields(category)
 
         submitted = st.form_submit_button("登録する")
 
@@ -386,6 +461,7 @@ def show_create_form() -> None:
             "subcategory": subcategory.strip(),
             "detail": detail.strip(),
             "missing_info": missing_info.strip(),
+            "additional_info": additional_info,
             "priority": priority,
             "due_date": due_date.strftime("%Y-%m-%d"),
             "assignee": assignee,
@@ -454,6 +530,9 @@ def show_update_form(df: pd.DataFrame) -> None:
         st.write(f"**問い合わせ内容**: {current.get('detail', '')}")
         if current.get("missing_info"):
             st.write(f"**不足情報・確認事項**: {current.get('missing_info', '')}")
+        if current.get("additional_info"):
+            st.write("**カテゴリ別追加情報**:")
+            st.text(current.get("additional_info", ""))
 
     assignee_options = ["未設定"] + get_assignees()
     statuses = get_statuses()
@@ -657,6 +736,9 @@ def show_faq_management(df: pd.DataFrame) -> None:
                 st.success("この問い合わせは現在FAQ候補です。")
             else:
                 st.info("この問い合わせはまだFAQ候補ではありません。")
+            if selected_row.get("additional_info"):
+                st.write("**カテゴリ別追加情報**:")
+                st.text(selected_row.get("additional_info", ""))
 
         with st.form(f"faq_form_{selected_request_id}"):
             faq_title = st.text_input(
