@@ -319,6 +319,19 @@ def show_alerts(df: pd.DataFrame) -> None:
         )
 
 
+def show_additional_info_block(value: object) -> None:
+    """カテゴリ別追加情報を表示する。未登録の場合も明示する。"""
+
+    additional_info = str(value or "").strip()
+
+    st.write("**カテゴリ別追加情報**:")
+
+    if additional_info:
+        st.text(additional_info)
+    else:
+        st.info("カテゴリ別追加情報は登録されていません。")
+
+
 def render_category_additional_fields(category: str) -> str:
     """カテゴリに応じた追加入力項目を表示し、保存用テキストを返す。"""
 
@@ -539,9 +552,8 @@ def show_update_form(df: pd.DataFrame) -> None:
         st.write(f"**問い合わせ内容**: {current.get('detail', '')}")
         if current.get("missing_info"):
             st.write(f"**不足情報・確認事項**: {current.get('missing_info', '')}")
-        if current.get("additional_info"):
-            st.write("**カテゴリ別追加情報**:")
-            st.text(current.get("additional_info", ""))
+
+        show_additional_info_block(current.get("additional_info", ""))
 
     assignee_options = ["未設定"] + get_assignees()
     statuses = get_statuses()
@@ -738,6 +750,9 @@ def show_faq_management(df: pd.DataFrame) -> None:
             st.write(f"**カテゴリ**：{selected_row.get('category', '')}")
             st.write(f"**サブカテゴリ**：{selected_row.get('subcategory', '')}")
             st.write(f"**問い合わせ内容**：{selected_row.get('detail', '')}")
+
+            show_additional_info_block(selected_row.get("additional_info", ""))
+
             st.write(f"**対応内容**：{selected_row.get('response_summary', '')}")
             st.write(f"**完了日**：{selected_row.get('completed_date', '')}")
 
@@ -745,9 +760,8 @@ def show_faq_management(df: pd.DataFrame) -> None:
                 st.success("この問い合わせは現在FAQ候補です。")
             else:
                 st.info("この問い合わせはまだFAQ候補ではありません。")
-            if selected_row.get("additional_info"):
-                st.write("**カテゴリ別追加情報**:")
-                st.text(selected_row.get("additional_info", ""))
+
+
 
         with st.form(f"faq_form_{selected_request_id}"):
             faq_title = st.text_input(
@@ -940,38 +954,41 @@ def show_requester_view(df: pd.DataFrame) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
-
     st.markdown("### 問い合わせを検索")
 
-    search_mode = st.radio(
-        "検索方法",
-        ["問い合わせIDで検索", "依頼者名で検索"],
-        horizontal=True,
-    )
-
-    request_id_query = ""
-    requester_query = ""
-
-    if search_mode == "問い合わせIDで検索":
-        request_id_query = st.text_input(
-            "問い合わせID",
-            placeholder="例：REQ-20260701-001",
-        )
-    else:
-        requester_query = st.text_input(
-            "依頼者名",
-            placeholder="例：吉田 拓也",
+    with st.form("requester_search_form"):
+        search_mode = st.radio(
+            "検索方法",
+            ["問い合わせIDで検索", "依頼者名で検索"],
+            horizontal=True,
         )
 
-    search_button = st.button("問い合わせ状況を確認")
+        request_id_query = ""
+        requester_query = ""
 
-    if not search_button:
+        if search_mode == "問い合わせIDで検索":
+            request_id_query = st.text_input(
+                "問い合わせID",
+                placeholder="例：REQ-20260701-001",
+            )
+        else:
+            requester_query = st.text_input(
+                "依頼者名",
+                placeholder="例：吉田 拓也",
+            )
+
+        search_submitted = st.form_submit_button("問い合わせ状況を確認")
+
+    if not search_submitted:
         st.info("問い合わせIDまたは依頼者名を入力して検索してください。")
         return
 
     if not request_id_query.strip() and not requester_query.strip():
         st.error("検索条件を入力してください。")
         return
+        if not request_id_query.strip() and not requester_query.strip():
+            st.error("検索条件を入力してください。")
+            return
 
     result_df = filter_requester_inquiries(
         df,
