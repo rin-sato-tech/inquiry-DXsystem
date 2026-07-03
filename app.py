@@ -234,7 +234,7 @@ def show_inquiry_table(df: pd.DataFrame) -> None:
 
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=column_config,
     )
@@ -303,7 +303,7 @@ def show_alerts(df: pd.DataFrame) -> None:
     st.markdown("### 要対応問い合わせ一覧")
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -841,7 +841,7 @@ def show_faq_management(df: pd.DataFrame) -> None:
 
         st.dataframe(
             candidates_df[display_columns],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -852,7 +852,7 @@ def show_faq_management(df: pd.DataFrame) -> None:
         else:
             st.dataframe(
                 category_summary,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -898,12 +898,12 @@ def show_tableau_export_section(df: pd.DataFrame) -> None:
                 "列名": tableau_df.columns.tolist(),
             }
         )
-        st.dataframe(columns_df, use_container_width=True, hide_index=True)
+        st.dataframe(columns_df, width="stretch", hide_index=True)
 
     with st.expander("出力データのプレビュー"):
         st.dataframe(
             tableau_df.head(20),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -951,7 +951,7 @@ def show_requester_view(df: pd.DataFrame) -> None:
         with st.expander("依頼者向け表示対象のステータス別件数"):
             st.dataframe(
                 status_summary,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
     st.markdown("### 問い合わせを検索")
@@ -1026,7 +1026,7 @@ def show_requester_view(df: pd.DataFrame) -> None:
 
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=column_config,
     )
@@ -1107,7 +1107,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         display_overdue_df = format_date_columns_for_display(overdue_df)
         st.dataframe(
             display_overdue_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1121,21 +1121,21 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### カテゴリ別件数")
         st.dataframe(
             count_by(df, "category", "カテゴリ"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 担当者別件数")
         st.dataframe(
             count_by(df, "assignee", "担当者"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 部署別件数")
         st.dataframe(
             count_by(df, "department", "部署"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1143,21 +1143,21 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### ステータス別件数")
         st.dataframe(
             count_by(df, "status", "ステータス"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 受付経路別件数")
         st.dataframe(
             count_by(df, "channel", "受付経路"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 優先度別件数")
         st.dataframe(
             count_by(df, "priority", "優先度"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1171,7 +1171,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### 担当者別 作業時間")
         st.dataframe(
             effort_by(df, "assignee", "担当者"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1179,7 +1179,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### カテゴリ別 作業時間")
         st.dataframe(
             effort_by(df, "category", "カテゴリ"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1194,7 +1194,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
     else:
         st.dataframe(
             response_summary,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1218,7 +1218,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
     alert_summary_df = summarize_alerts(add_alert_columns(df))
     st.dataframe(
         alert_summary_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -1230,7 +1230,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
     else:
         st.dataframe(
             faq_category_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1242,14 +1242,14 @@ def show_simple_summary(df: pd.DataFrame) -> None:
     else:
         st.dataframe(
             additional_info_summary_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
     st.markdown("#### 依頼者向け表示制御")
     st.dataframe(
         requester_visible_summary(df),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
