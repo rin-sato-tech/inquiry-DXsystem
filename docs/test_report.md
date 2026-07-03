@@ -91,3 +91,39 @@ python -m src.smoke_test
 
 主要機能であるCSV取込、問い合わせ一覧表示、新規登録、ステータス更新、期限超過判定、集計、Tableau用CSV出力が動作することを確認した。
 初期版として、管理部内で問い合わせ状況を一元管理し、問い合わせ管理作業の効率化を説明できる状態になっている。
+
+## Ver.2 テスト結果
+
+### 実施内容
+
+Ver.2で追加した以下の機能について、構文確認、DB確認、スモークテスト、Streamlit画面確認を実施した。
+
+- 要対応アラート
+- FAQ候補管理
+- カテゴリ別入力フォーム
+- 依頼者向け確認画面
+- Ver.2集計
+- Tableau出力列拡張
+
+### 実行コマンド
+
+```bash
+python -m py_compile app.py src/*.py
+python -m src.migrate_db
+python -m src.check_db
+python -m src.smoke_test
+python -m src.smoke_test_ver2
+python -m src.export_tableau_csv
+streamlit run app.py
+```
+
+### 結果
+
+主要機能が正常に動作することを確認した。 また、Ver.2追加機能によって既存の問い合わせ一覧、新規登録、ステータス更新、集計、CSV出力が壊れていないことを確認した。
+
+### WBS8での修正内容
+
+- カテゴリ別追加情報がない場合も、その旨を表示するように修正
+- FAQ候補管理画面の問い合わせ詳細表示順を調整
+- 依頼者向け確認画面の検索UIをフォーム化し、Enterキーでも検索できるように修正
+- Streamlitの `use_container_width` 非推奨警告に対応

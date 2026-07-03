@@ -204,3 +204,49 @@ Streamlitのキャッシュが残っている可能性があります。
 - ブラウザを再読み込みする
 - アプリを再起動する
 - `st.cache_data.clear()` が呼ばれているか確認する
+
+## Ver.2 DB移行手順
+
+既存DBをVer.2に対応させる場合は、以下を実行する。
+
+```bash
+python -m src.migrate_db
+```
+
+このスクリプトは、既存の `inquiries` テーブルにVer.2追加カラムが存在するか確認し、不足しているカラムだけを追加する。
+
+確認対象のカラムは以下である。
+
+- `faq_candidate`
+- `faq_title`
+- `faq_answer`
+- `additional_info`
+- `requester_visible`
+- `last_status_changed_at`
+
+複数回実行しても、既に存在するカラムは再追加しない。
+
+## Ver.2動作確認手順
+
+以下を順に実行する。
+
+```bash
+python -m py_compile app.py src/*.py
+python -m src.migrate_db
+python -m src.check_db
+python -m src.smoke_test
+python -m src.smoke_test_ver2
+python -m src.export_tableau_csv
+streamlit run app.py
+```
+
+## Streamlit非推奨警告への対応
+
+Streamlitのバージョンによっては、`use_container_width` に関する非推奨警告が表示される場合がある。
+
+その場合は、以下のように置き換える。
+
+| 旧                          | 新                |
+| --------------------------- | ----------------- |
+| `use_container_width=True`  | `width="stretch"` |
+| `use_container_width=False` | `width="content"` |
