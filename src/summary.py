@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from src.alerts import add_alert_columns, summarize_alerts
+from src.faq import add_faq_columns, get_faq_candidates
+
 import pandas as pd
 
 
@@ -172,3 +175,154 @@ def response_days_by_category(df: pd.DataFrame) -> pd.DataFrame:
     summary["平均対応日数"] = summary["平均対応日数"].round(1)
 
     return summary.sort_values("平均対応日数", ascending=False)
+
+
+def _text_series(df: pd.DataFrame, column: str) -> pd.Series:
+    """指定列を文字列Seriesとして取得する。存在しない場合は空文字Seriesを返す。"""
+    if column not in df.columns:
+        return pd.Series([""] * len(df), index=df.index)
+
+    return df[column].fillna("").astype(str).str.strip()
+
+
+def _int_series(
+    df: pd.DataFrame,
+    column: str,
+    default: int = 0,
+) -> pd.Series:
+    """指定列を整数Seriesとして取得する。存在しない場合はdefaultで補う。"""
+    if column not in df.columns:
+        return pd.Series([default] * len(df), index=df.index)
+
+    return (
+        pd.to_numeric(df[column], errors="coerce")
+        .fillna(default)
+        .astype(int)
+    )
+
+
+def summarize_ver2_metrics(df: pd.DataFrame) -> dict[str, int | float]:
+    """Ver.2追加機能に関するKPIを集計する。"""
+
+    if df.empty:
+        return {
+            "alert_count": 0,
+            "faq_candidate_count": 0,
+            "additional_info_count": 0,
+            "additional_info_rate": 0.0,
+            "requester_visible_count": 0,
+            "requester_hidden_count": 0,
+        }
+
+    alert_df = add_alert_columns(df)
+    faq_df = add_faq_columns(df)
+
+    additional_info = _text_series(df, "additional_info")
+    additional_info_count = int(additional_info.ne("").sum())
+
+    requester_visible = _int_series(df, "requester_visible", default=1)
+    requester_visible_count = int(requester_visible.eq(1).sum())
+    requester_hidden_count = int(requester_visible.eq(0).sum())
+
+    return {
+        "alert_count": int(alert_df["has_alert"].sum()),
+        "faq_candidate_count": int(faq_df["is_faq_candidate"].sum()),
+        "additional_info_count": additional_info_count,
+        "additional_info_rate": round(additional_info_count / len(df) * 100, 1),
+        "requester_visible_count": requester_visible_count,
+        "requester_hidden_count": requester_hidden_count,
+    }
+
+
+def category_additional_info_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """カテゴリ別に追加情報の入力件数・入力率を集計する。"""
+
+    if df.empty or "category" not in df.columns:
+        return pd.DataFrame(
+            columns=[
+                "カテゴリ",
+                "問い合わせ件数",
+                "追加情報あり",
+                "追加情報入力率",
+            ]
+        )
+
+    work_df = df.copy()
+
+    work_df["category"] = (
+        work_df["category"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("", "未設定")
+    )
+
+    work_df["has_additional_info"] = (
+        _text_series(work_df, "additional_info").ne("")
+    )
+
+    summary = (
+        work_df.groupby("category", dropna=False)
+        .agg(
+            問い合わせ件数=("request_id", "count"),
+            追加情報あり=("has_additional_info", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"category": "カテゴリ"})
+    )
+
+    summary["追加情報入力率"] = (
+        summary["追加情報あり"] / summary["問い合わせ件数"] * 100
+    ).round(1)
+
+    return summary.sort_values("問い合わせ件数", ascending=False)
+
+
+def faq_candidate_by_category(df: pd.DataFrame) -> pd.DataFrame:
+    """カテゴリ別にFAQ候補件数を集計する。"""
+
+    candidates = get_faq_candidates(df)
+
+    if candidates.empty or "category" not in candidates.columns:
+        return pd.DataFrame(columns=["カテゴリ", "FAQ候補件数"])
+
+    candidates = candidates.copy()
+    candidates["category"] = (
+        candidates["category"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("", "未設定")
+    )
+
+    summary = (
+        candidates.groupby("category", dropna=False)
+        .size()
+        .reset_index(name="FAQ候補件数")
+        .rename(columns={"category": "カテゴリ"})
+        .sort_values("FAQ候補件数", ascending=False)
+    )
+
+    return summary
+
+
+def requester_visible_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """依頼者向け表示・非表示の件数を集計する。"""
+
+    if df.empty:
+        return pd.DataFrame(columns=["表示区分", "件数"])
+
+    requester_visible = _int_series(df, "requester_visible", default=1)
+
+    labels = requester_visible.map(
+        {
+            1: "依頼者向け表示",
+            0: "依頼者向け非表示",
+        }
+    ).fillna("依頼者向け非表示")
+
+    return (
+        labels.value_counts()
+        .rename_axis("表示区分")
+        .reset_index(name="件数")
+    )

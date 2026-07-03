@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.alerts import add_alert_columns
+from src.faq import add_faq_columns
 from src.aggregation import add_derived_columns
 from src.db import DATA_DIR
 
@@ -34,6 +36,7 @@ TABLEAU_COLUMNS = [
     "overdue_flag",
     "overdue_int",
     "overdue_label",
+    "days_until_due",
     "days_overdue",
     "response_days",
     "management_minutes",
@@ -43,8 +46,25 @@ TABLEAU_COLUMNS = [
     "total_work_hours",
     "detail",
     "missing_info",
+    "additional_info",
+    "has_additional_info",
+    "has_additional_info_int",
     "response_summary",
     "record_issue",
+    "faq_candidate",
+    "faq_candidate_int",
+    "faq_title",
+    "faq_answer",
+    "requester_visible",
+    "requester_visible_int",
+    "requester_visible_label",
+    "alert_overdue",
+    "alert_due_today",
+    "alert_due_soon",
+    "alert_unassigned",
+    "alert_info_waiting_long",
+    "has_alert",
+    "alert_type",
 ]
 
 
@@ -72,11 +92,23 @@ def make_tableau_dataframe(df: pd.DataFrame, today: date | None = None) -> pd.Da
         return pd.DataFrame(columns=TABLEAU_COLUMNS)
 
     result = add_derived_columns(df, today=today)
+    result = add_alert_columns(result, today=today)
+    result = add_faq_columns(result)
 
     today_ts = pd.Timestamp(today or date.today()).normalize()
 
     # 空欄をTableau上で扱いやすくする
-    for col in ["assignee", "subcategory", "missing_info", "response_summary", "record_issue"]:
+    for col in [
+        "assignee",
+        "subcategory",
+        "missing_info",
+        "additional_info",
+        "response_summary",
+        "record_issue",
+        "faq_title",
+        "faq_answer",
+        "alert_type",
+    ]:
         if col in result.columns:
             result[col] = (
                 result[col]
@@ -99,6 +131,63 @@ def make_tableau_dataframe(df: pd.DataFrame, today: date | None = None) -> pd.Da
     result["overdue_label"] = result["overdue_flag"].map(
         {True: "期限超過", False: "期限内・完了"}
     )
+
+    # Ver.2: 追加情報の入力有無
+    if "additional_info" not in result.columns:
+        result["additional_info"] = ""
+
+    result["has_additional_info"] = (
+        result["additional_info"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .ne("")
+    )
+    result["has_additional_info_int"] = (
+        result["has_additional_info"].astype(int)
+    )
+
+    # Ver.2: FAQ候補
+    if "faq_candidate" not in result.columns:
+        result["faq_candidate"] = 0
+
+    result["faq_candidate"] = (
+        pd.to_numeric(result["faq_candidate"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    result["faq_candidate_int"] = result["faq_candidate"]
+
+    # Ver.2: 依頼者向け表示制御
+    if "requester_visible" not in result.columns:
+        result["requester_visible"] = 1
+
+    result["requester_visible"] = (
+        pd.to_numeric(result["requester_visible"], errors="coerce")
+        .fillna(1)
+        .astype(int)
+    )
+    result["requester_visible_int"] = result["requester_visible"]
+    result["requester_visible_label"] = result["requester_visible"].map(
+        {
+            1: "依頼者向け表示",
+            0: "依頼者向け非表示",
+        }
+    ).fillna("依頼者向け非表示")
+
+    # Ver.2: アラート列をTableauで集計しやすい0/1にそろえる
+    for col in [
+        "alert_overdue",
+        "alert_due_today",
+        "alert_due_soon",
+        "alert_unassigned",
+        "alert_info_waiting_long",
+        "has_alert",
+    ]:
+        if col not in result.columns:
+            result[col] = False
+
+        result[col] = result[col].fillna(False).astype(bool)
 
     due_ts = pd.to_datetime(result["due_date"], errors="coerce")
     days_overdue = (today_ts - due_ts).dt.days

@@ -44,6 +44,10 @@ from src.summary import (
     overdue_table,
     response_days_by_category,
     summarize_basic_metrics,
+    category_additional_info_summary,
+    faq_candidate_by_category,
+    requester_visible_summary,
+    summarize_ver2_metrics,
 )
 from src.tableau_export import export_tableau_csv, make_tableau_dataframe, to_csv_bytes
 from src.faq import (
@@ -1176,6 +1180,61 @@ def show_simple_summary(df: pd.DataFrame) -> None:
             use_container_width=True,
             hide_index=True,
         )
+
+    st.divider()
+
+    st.markdown("### Ver.2追加機能の集計")
+
+    ver2_metrics = summarize_ver2_metrics(df)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("要対応アラート", ver2_metrics["alert_count"])
+    col2.metric("FAQ候補", ver2_metrics["faq_candidate_count"])
+    col3.metric("追加情報あり", ver2_metrics["additional_info_count"])
+    col4.metric("追加情報入力率", f'{ver2_metrics["additional_info_rate"]}%')
+
+    col5, col6 = st.columns(2)
+    col5.metric("依頼者向け表示", ver2_metrics["requester_visible_count"])
+    col6.metric("依頼者向け非表示", ver2_metrics["requester_hidden_count"])
+
+    st.markdown("#### アラート種別別件数")
+    alert_summary_df = summarize_alerts(add_alert_columns(df))
+    st.dataframe(
+        alert_summary_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("#### カテゴリ別FAQ候補件数")
+    faq_category_df = faq_candidate_by_category(df)
+
+    if faq_category_df.empty:
+        st.info("FAQ候補はまだ登録されていません。")
+    else:
+        st.dataframe(
+            faq_category_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.markdown("#### カテゴリ別追加情報入力率")
+    additional_info_summary_df = category_additional_info_summary(df)
+
+    if additional_info_summary_df.empty:
+        st.info("追加情報の集計対象がありません。")
+    else:
+        st.dataframe(
+            additional_info_summary_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.markdown("#### 依頼者向け表示制御")
+    st.dataframe(
+        requester_visible_summary(df),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.divider()
 
