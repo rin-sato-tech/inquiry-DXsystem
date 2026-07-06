@@ -1,5 +1,12 @@
 # 社内問い合わせ管理システム
 
+## 現在のバージョン
+
+現在の最新版は **Ver.2.0.0** です。
+
+Ver.1では、問い合わせの受付、記録、進捗管理、期限超過判定、集計、Tableau連携用CSV出力を実装しました。
+Ver.2では、Ver.1の機能に加えて、要対応アラート、FAQ候補管理、カテゴリ別入力フォーム、依頼者向け確認画面、Ver.2追加集計、Tableau出力列の拡張を追加しています。
+
 ## 概要
 
 本プロジェクトは、社内の問い合わせ・依頼対応業務を効率化するための簡易DXアプリです。
@@ -217,7 +224,9 @@ inquiry-dx-system/
 │       ├── ver2_screen_design.md
 │       ├── ver2_data_definition.md
 │       ├── ver2_wbs.md
-│       └── ver2_test_checklist.md
+│       ├── ver2_test_checklist.md
+│       ├── ver2_release_note.md
+│       └── ver2_portfolio_summary.md
 ├── notes/
 │   └── ver2/
 ├── src/
@@ -234,6 +243,10 @@ inquiry-dx-system/
 │   ├── master_data.py
 │   ├── tableau_export.py
 │   ├── export_tableau_csv.py
+│   ├── check_db.py
+│   ├── check_alerts.py
+│   ├── check_faq.py
+│   ├── check_ver2_summary.py
 │   ├── smoke_test.py
 │   └── smoke_test_ver2.py
 ├── screenshots/
@@ -246,21 +259,34 @@ inquiry-dx-system/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
 
+## 初期データ作成・DB移行
+
+```bash
 python -m src.import_csv
 python -m src.migrate_db
 python -m src.check_db
+```
 
+## アプリ起動
+
+```bash
 streamlit run app.py
 ```
 
-既存DBをVer.2に対応させる場合は、以下を実行します。
+## 動作確認
 
 ```bash
-python -m src.migrate_db
+python -m py_compile app.py src/*.py
+python -m src.check_db
+python -m src.smoke_test
+python -m src.smoke_test_ver2
+python -m src.export_tableau_csv
+python -m src.check_alerts
+python -m src.check_faq
+python -m src.check_ver2_summary
 ```
-
-この処理は、既に追加済みのカラムを再追加しないようにしているため、複数回実行しても問題ありません。
 
 ## Tableau用CSV出力
 
@@ -322,6 +348,20 @@ docs/ver2/ver2_test_checklist.md
 - Tableau連携用CSV出力
 
 つまり、本システムは「問い合わせ受付フォーム」ではなく、「問い合わせ管理業務全体を支援する簡易システム」として位置づけています。
+
+## Ver.2関連ドキュメント
+
+Ver.2.0.0の設計・実装・テスト内容は、以下のドキュメントに整理しています。
+
+| ドキュメント                          | 内容                        |
+| ------------------------------------- | --------------------------- |
+| `docs/ver2/ver2_requirements.md`      | Ver.2要件定義               |
+| `docs/ver2/ver2_screen_design.md`     | Ver.2画面設計               |
+| `docs/ver2/ver2_data_definition.md`   | Ver.2データ定義             |
+| `docs/ver2/ver2_wbs.md`               | Ver.2開発タスク             |
+| `docs/ver2/ver2_test_checklist.md`    | Ver.2テストチェックリスト   |
+| `docs/ver2/ver2_release_note.md`      | Ver.2変更点まとめ           |
+| `docs/ver2/ver2_portfolio_summary.md` | Ver.2ポートフォリオ向け要約 |
 
 ## 実装対象外
 

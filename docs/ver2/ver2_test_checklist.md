@@ -18,7 +18,10 @@
 |   4 | 既存スモークテスト  | `src.smoke_test` が正常に完了する             | 完了 |
 |   5 | Ver.2スモークテスト | `src.smoke_test_ver2` が正常に完了する        | 完了 |
 |   6 | Tableau CSV出力     | `src.export_tableau_csv` が正常に完了する     | 完了 |
-|   7 | Streamlit起動       | `streamlit run app.py` で起動する             | 完了 |
+|   7 | アラート確認        | `src.check_alerts` が正常に完了する           | 完了 |
+|   8 | FAQ確認             | `src.check_faq` が正常に完了する              | 完了 |
+|   9 | Ver.2集計確認       | `src.check_ver2_summary` が正常に完了する     | 完了 |
+|  10 | Streamlit起動       | `streamlit run app.py` で起動する             | 完了 |
 
 ## 3. 実行コマンド
 
@@ -31,6 +34,9 @@ python -m src.check_db
 python -m src.smoke_test
 python -m src.smoke_test_ver2
 python -m src.export_tableau_csv
+python -m src.check_alerts
+python -m src.check_faq
+python -m src.check_ver2_summary
 streamlit run app.py
 ```
 
