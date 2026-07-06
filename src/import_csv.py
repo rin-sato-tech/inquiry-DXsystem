@@ -26,8 +26,14 @@ def load_csv(csv_path: Path) -> list[dict]:
         if col not in df.columns:
             if col in {"created_at", "updated_at"}:
                 df[col] = now
-            elif col in {"management_minutes", "actual_response_minutes"}:
+            elif col in {
+                "management_minutes",
+                "actual_response_minutes",
+                "faq_candidate",
+            }:
                 df[col] = 0
+            elif col == "requester_visible":
+                df[col] = 1
             else:
                 df[col] = ""
 

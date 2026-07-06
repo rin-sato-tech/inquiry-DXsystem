@@ -30,6 +30,15 @@ COLUMNS = [
     "response_summary",
     "record_issue",
     "completed_date",
+
+    # Ver.2用カラム
+    "faq_candidate",
+    "faq_title",
+    "faq_answer",
+    "additional_info",
+    "requester_visible",
+    "last_status_changed_at",
+
     "management_minutes",
     "actual_response_minutes",
     "created_at",
@@ -54,6 +63,10 @@ REQUIRED_COLUMNS = [
 INTEGER_COLUMNS = {
     "management_minutes",
     "actual_response_minutes",
+
+    # Ver.2用カラム
+    "faq_candidate",
+    "requester_visible",
 }
 
 
@@ -97,13 +110,28 @@ def _to_int_or_zero(value: Any) -> int:
         return 0
 
 
+def _to_int_or_default(value, default: int = 0) -> int:
+    """整数に変換する。欠損や変換不能な値はdefaultを返す。"""
+    if _is_missing(value):
+        return default
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
     """DB登録前に、欠損値・数値・日時を整える。"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     normalized: dict[str, Any] = {}
 
     for col in COLUMNS:
-        value = record.get(col, "")
+        if col == "requester_visible":
+            # デフォルト値を1にする
+            value = record.get(col, 1)
+        else:
+            value = record.get(col, "")
 
         if col in INTEGER_COLUMNS:
             normalized[col] = _to_int_or_zero(value)

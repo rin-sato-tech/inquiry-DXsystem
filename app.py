@@ -6,6 +6,12 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from src.alerts import (
+    add_alert_columns,
+    filter_alerts,
+    get_alert_display_columns,
+    summarize_alerts,
+)
 from src.aggregation import add_derived_columns, format_date_columns_for_display
 from src.db import (
     fetch_all_inquiries,
@@ -15,6 +21,10 @@ from src.db import (
     update_inquiry,
     upsert_inquiry,
 )
+from src.category_fields import (
+    format_additional_info,
+    get_category_fields,
+)
 from src.master_data import (
     get_assignees,
     get_categories,
@@ -23,14 +33,31 @@ from src.master_data import (
     get_priorities,
     get_statuses,
 )
+from src.requester_view import (
+    filter_requester_inquiries,
+    get_requester_display_columns,
+    get_requester_status_counts,
+)
 from src.summary import (
     count_by,
     effort_by,
     overdue_table,
     response_days_by_category,
     summarize_basic_metrics,
+    category_additional_info_summary,
+    faq_candidate_by_category,
+    requester_visible_summary,
+    summarize_ver2_metrics,
 )
 from src.tableau_export import export_tableau_csv, make_tableau_dataframe, to_csv_bytes
+from src.faq import (
+    add_faq_columns,
+    get_completed_inquiries,
+    get_faq_candidates,
+    get_faq_display_columns,
+    summarize_faq_candidates,
+    to_faq_csv_bytes,
+)
 
 st.set_page_config(
     page_title="社内問い合わせ管理システム",
@@ -173,6 +200,7 @@ def show_inquiry_table(df: pd.DataFrame) -> None:
         "status",
         "overdue_flag",
         "detail",
+        "additional_info",
         "response_summary",
     ]
 
@@ -200,15 +228,160 @@ def show_inquiry_table(df: pd.DataFrame) -> None:
         "status": "ステータス",
         "overdue_flag": "期限超過",
         "detail": "問い合わせ内容",
+        "additional_info": "カテゴリ別追加情報",
         "response_summary": "対応内容",
     }
 
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=column_config,
     )
+
+
+def show_alerts(df: pd.DataFrame) -> None:
+    """要対応アラート画面を表示する。"""
+
+    st.subheader("要対応アラート")
+
+    if df.empty:
+        st.info("問い合わせデータがありません。")
+        return
+
+    alert_df = add_alert_columns(df)
+    summary_df = summarize_alerts(alert_df)
+
+    counts = {
+        row["alert_type"]: int(row["count"])
+        for _, row in summary_df.iterrows()
+    }
+
+    total_alerts = int(alert_df["has_alert"].sum())
+
+    st.write(
+        "期限超過、期限間近、担当者未設定など、優先的に確認すべき問い合わせを表示します。"
+    )
+
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+
+    col1.metric("アラート対象", total_alerts)
+    col2.metric("期限超過", counts.get("期限超過", 0))
+    col3.metric("本日期限", counts.get("本日期限", 0))
+    col4.metric("期限間近", counts.get("期限間近", 0))
+    col5.metric("担当者未設定", counts.get("担当者未設定", 0))
+    col6.metric("情報待ち長期化", counts.get("情報待ち長期化", 0))
+
+    if total_alerts == 0:
+        st.success("現在、要対応アラートはありません。")
+    else:
+        st.warning(f"要対応の問い合わせが {total_alerts} 件あります。")
+
+    st.markdown("### アラート種別で絞り込み")
+
+    selected_alert = st.selectbox(
+        "表示するアラート種別",
+        [
+            "すべて",
+            "期限超過",
+            "本日期限",
+            "期限間近",
+            "担当者未設定",
+            "情報待ち長期化",
+        ],
+    )
+
+    display_df = filter_alerts(alert_df, selected_alert)
+
+    if display_df.empty:
+        st.info("該当する問い合わせはありません。")
+        return
+
+    display_columns = get_alert_display_columns(display_df)
+    display_df = display_df[display_columns].copy()
+
+    st.markdown("### 要対応問い合わせ一覧")
+    st.dataframe(
+        display_df,
+        width="stretch",
+        hide_index=True,
+    )
+
+    with st.expander("アラート判定条件"):
+        st.markdown(
+            """
+            - **期限超過**：未完了かつ希望期限が今日より前
+            - **本日期限**：未完了かつ希望期限が今日
+            - **期限間近**：未完了かつ希望期限が明日まで
+            - **担当者未設定**：担当者が空欄
+            - **情報待ち長期化**：ステータスが情報待ちで、受付日から3日以上経過
+            """
+        )
+
+
+def show_additional_info_block(value: object) -> None:
+    """カテゴリ別追加情報を表示する。未登録の場合も明示する。"""
+
+    additional_info = str(value or "").strip()
+
+    st.write("**カテゴリ別追加情報**:")
+
+    if additional_info:
+        st.text(additional_info)
+    else:
+        st.info("カテゴリ別追加情報は登録されていません。")
+
+
+def render_category_additional_fields(category: str) -> str:
+    """カテゴリに応じた追加入力項目を表示し、保存用テキストを返す。"""
+
+    fields = get_category_fields(category)
+
+    st.markdown("### カテゴリ別追加情報")
+    st.caption(
+        "カテゴリに応じて、初回問い合わせ時に確認しておきたい情報を入力します。"
+        "未入力でも登録できますが、入力すると管理部との確認往復を減らしやすくなります。"
+    )
+
+    values: dict[str, Any] = {}
+
+    if not fields:
+        free_text = st.text_area(
+            "追加情報",
+            height=90,
+            placeholder="このカテゴリで補足しておきたい情報を入力してください。",
+        )
+        return free_text.strip()
+
+    for field in fields:
+        widget_key = f"create_additional_{category}_{field.key}"
+
+        if field.field_type == "text_area":
+            values[field.key] = st.text_area(
+                field.label,
+                height=80,
+                key=widget_key,
+            )
+        elif field.field_type == "select":
+            values[field.key] = st.selectbox(
+                field.label,
+                field.options,
+                key=widget_key,
+            )
+        elif field.field_type == "date":
+            selected_date = st.date_input(
+                field.label,
+                value=None,
+                key=widget_key,
+            )
+            values[field.key] = selected_date.strftime("%Y-%m-%d") if selected_date else ""
+        else:
+            values[field.key] = st.text_input(
+                field.label,
+                key=widget_key,
+            )
+
+    return format_additional_info(category, values)
 
 
 def show_create_form() -> None:
@@ -222,6 +395,17 @@ def show_create_form() -> None:
     priorities = get_priorities()
     statuses = get_statuses()
     assignee_options = ["未設定"] + get_assignees()
+
+    st.markdown("### カテゴリ選択")
+    category = st.selectbox(
+        "カテゴリ *",
+        categories,
+        key="create_category",
+    )
+
+    st.caption(
+        "カテゴリを選択すると、下のフォームにカテゴリ別の追加入力項目が表示されます。"
+    )
 
     default_due_date = date.today() + timedelta(days=3)
 
@@ -238,7 +422,11 @@ def show_create_form() -> None:
             )
 
         with col2:
-            category = st.selectbox("カテゴリ *", categories)
+            st.text_input(
+                "カテゴリ *",
+                value=category,
+                disabled=True,
+            )
             subcategory = st.text_input("小分類")
             priority = st.selectbox(
                 "優先度 *",
@@ -257,6 +445,8 @@ def show_create_form() -> None:
 
         detail = st.text_area("問い合わせ内容 *", height=120)
         missing_info = st.text_area("不足情報・確認事項", height=80)
+
+        additional_info = render_category_additional_fields(category)
 
         submitted = st.form_submit_button("登録する")
 
@@ -293,6 +483,7 @@ def show_create_form() -> None:
             "subcategory": subcategory.strip(),
             "detail": detail.strip(),
             "missing_info": missing_info.strip(),
+            "additional_info": additional_info,
             "priority": priority,
             "due_date": due_date.strftime("%Y-%m-%d"),
             "assignee": assignee,
@@ -361,6 +552,8 @@ def show_update_form(df: pd.DataFrame) -> None:
         st.write(f"**問い合わせ内容**: {current.get('detail', '')}")
         if current.get("missing_info"):
             st.write(f"**不足情報・確認事項**: {current.get('missing_info', '')}")
+
+        show_additional_info_block(current.get("additional_info", ""))
 
     assignee_options = ["未設定"] + get_assignees()
     statuses = get_statuses()
@@ -484,6 +677,207 @@ def show_update_form(df: pd.DataFrame) -> None:
             st.exception(exc)
 
 
+def show_faq_management(df: pd.DataFrame) -> None:
+    """FAQ候補管理画面を表示する。"""
+
+    st.subheader("FAQ候補管理")
+
+    # st.rerun() 後もメッセージを表示するため、session_stateから取り出して表示する
+    if "faq_message" in st.session_state:
+        st.success(st.session_state.pop("faq_message"))
+
+    if df.empty:
+        st.info("問い合わせデータがありません。")
+        return
+
+    faq_df = add_faq_columns(df)
+    completed_df = get_completed_inquiries(faq_df)
+    candidates_df = get_faq_candidates(faq_df)
+    category_summary = summarize_faq_candidates(faq_df)
+
+    st.write(
+        "完了済み問い合わせの中から、よくある問い合わせとしてFAQ化できそうなものを候補登録します。"
+    )
+
+    st.info(
+        "FAQ候補として保存・更新すると、選択した問い合わせがFAQ候補一覧に表示されます。"
+        "すでにFAQ候補になっている問い合わせを保存した場合は、FAQタイトル・回答案を上書き更新します。"
+        "FAQ候補から外すと一覧には表示されなくなりますが、入力済みのタイトル・回答案は下書きとして保持されます。"
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("完了済み問い合わせ", len(completed_df))
+    col2.metric("FAQ候補", len(candidates_df))
+    col3.metric(
+        "FAQ候補カテゴリ数",
+        category_summary["category"].nunique() if not category_summary.empty else 0,
+    )
+
+    st.markdown("### FAQ候補の登録・編集")
+
+    if completed_df.empty:
+        st.info("FAQ候補にできる完了済み問い合わせがありません。")
+    else:
+        completed_df = completed_df.copy()
+
+        def format_inquiry_label(request_id: str) -> str:
+            """selectbox表示用のラベルを作る。"""
+            row = completed_df[completed_df["request_id"] == request_id].iloc[0]
+
+            category = str(row.get("category", "") or "")
+            detail = str(row.get("detail", "") or "")
+
+            return f"{request_id}|{category}|{detail[:40]}"
+
+        request_ids = completed_df["request_id"].astype(str).tolist()
+
+        selected_request_id = st.selectbox(
+            "FAQ候補として編集する問い合わせ",
+            request_ids,
+            format_func=format_inquiry_label,
+        )
+
+        selected_row = completed_df[
+            completed_df["request_id"].astype(str) == selected_request_id
+        ].iloc[0]
+
+        current_candidate = int(selected_row.get("faq_candidate", 0) or 0) == 1
+        current_title = str(selected_row.get("faq_title", "") or "")
+        current_answer = str(selected_row.get("faq_answer", "") or "")
+
+        with st.expander("元の問い合わせ内容", expanded=True):
+            st.write(f"**問い合わせID**：{selected_row.get('request_id', '')}")
+            st.write(f"**カテゴリ**：{selected_row.get('category', '')}")
+            st.write(f"**サブカテゴリ**：{selected_row.get('subcategory', '')}")
+            st.write(f"**問い合わせ内容**：{selected_row.get('detail', '')}")
+
+            show_additional_info_block(selected_row.get("additional_info", ""))
+
+            st.write(f"**対応内容**：{selected_row.get('response_summary', '')}")
+            st.write(f"**完了日**：{selected_row.get('completed_date', '')}")
+
+            if current_candidate:
+                st.success("この問い合わせは現在FAQ候補です。")
+            else:
+                st.info("この問い合わせはまだFAQ候補ではありません。")
+
+
+
+        with st.form(f"faq_form_{selected_request_id}"):
+            faq_title = st.text_input(
+                "FAQタイトル",
+                value=current_title,
+                placeholder="例：販売管理システムにログインできない場合の対応",
+            )
+
+            faq_answer = st.text_area(
+                "FAQ回答案",
+                value=current_answer,
+                height=160,
+                placeholder="依頼者向けに、原因・確認手順・対応方法を簡潔に整理します。",
+            )
+
+            save_label = (
+                "FAQ候補として保存・更新"
+                if current_candidate
+                else "FAQ候補として保存"
+            )
+
+            submitted = st.form_submit_button(save_label)
+
+            if submitted:
+                if not faq_title.strip():
+                    st.error("FAQタイトルを入力してください。")
+                    return
+
+                if not faq_answer.strip():
+                    st.error("FAQ回答案を入力してください。")
+                    return
+
+                updates = {
+                    "faq_candidate": 1,
+                    "faq_title": faq_title.strip(),
+                    "faq_answer": faq_answer.strip(),
+                }
+
+                update_inquiry(selected_request_id, updates)
+                clear_cache()
+
+                if current_candidate:
+                    st.session_state["faq_message"] = "FAQ候補情報を更新しました。"
+                else:
+                    st.session_state["faq_message"] = "FAQ候補として保存しました。"
+
+                st.rerun()
+
+        if current_candidate:
+            st.markdown("#### FAQ候補の解除")
+
+            st.warning(
+                "この操作を行うと、FAQ候補一覧には表示されなくなります。"
+                "ただし、入力済みのFAQタイトル・FAQ回答案は下書きとして保持されます。"
+            )
+
+            if st.button(
+                "FAQ候補から外す",
+                key=f"remove_faq_candidate_{selected_request_id}",
+            ):
+                updates = {
+                    "faq_candidate": 0,
+                }
+
+                update_inquiry(selected_request_id, updates)
+                clear_cache()
+
+                st.session_state["faq_message"] = "FAQ候補から外しました。"
+                st.rerun()
+
+    st.markdown("### FAQ候補一覧")
+
+    if candidates_df.empty:
+        st.info("現在、FAQ候補は登録されていません。")
+    else:
+        display_columns = get_faq_display_columns(candidates_df)
+
+        st.dataframe(
+            candidates_df[display_columns],
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.markdown("### カテゴリ別FAQ候補件数")
+
+        if category_summary.empty:
+            st.info("カテゴリ別集計はありません。")
+        else:
+            st.dataframe(
+                category_summary,
+                width="stretch",
+                hide_index=True,
+            )
+
+        csv_bytes = to_faq_csv_bytes(candidates_df)
+
+        st.download_button(
+            label="FAQ候補CSVをダウンロード",
+            data=csv_bytes,
+            file_name="faq_candidates.csv",
+            mime="text/csv",
+        )
+
+    with st.expander("FAQ候補管理の考え方"):
+        st.markdown(
+            """
+            - FAQ候補にできる対象は、原則として完了済み問い合わせです。
+            - `FAQ候補として保存・更新` を押すと、選択した問い合わせがFAQ候補になります。
+            - すでにFAQ候補になっている問い合わせを保存した場合、FAQタイトル・回答案は上書き更新されます。
+            - `FAQ候補から外す` を押すと、FAQ候補一覧には表示されなくなります。
+            - FAQ候補から外しても、FAQタイトル・FAQ回答案は下書きとして保持します。
+            - Ver.2ではFAQ公開ページまでは作らず、FAQ候補を蓄積する段階までを対象とします。
+            """
+        )
+
+
 def show_tableau_export_section(df: pd.DataFrame) -> None:
     """Tableau連携用CSVの出力UIを表示する。"""
     st.markdown("### Tableau用CSV出力")
@@ -504,12 +898,12 @@ def show_tableau_export_section(df: pd.DataFrame) -> None:
                 "列名": tableau_df.columns.tolist(),
             }
         )
-        st.dataframe(columns_df, use_container_width=True, hide_index=True)
+        st.dataframe(columns_df, width="stretch", hide_index=True)
 
     with st.expander("出力データのプレビュー"):
         st.dataframe(
             tableau_df.head(20),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -531,6 +925,150 @@ def show_tableau_export_section(df: pd.DataFrame) -> None:
             except Exception as exc:
                 st.error("CSVの保存に失敗しました。")
                 st.exception(exc)
+
+
+def show_requester_view(df: pd.DataFrame) -> None:
+    """依頼者向け確認画面を表示する。"""
+
+    st.header("依頼者向け確認")
+
+    st.caption(
+        "依頼者が、自分の問い合わせ状況を確認するための画面です。"
+    )
+
+    st.info(
+        "この画面はデモ用です。本格運用ではログイン認証・権限管理を行い、"
+        "本人の問い合わせのみ表示する必要があります。"
+    )
+
+    if df.empty:
+        st.warning("確認できる問い合わせデータがありません。")
+        return
+
+    status_summary = get_requester_status_counts(df)
+
+    if not status_summary.empty:
+        with st.expander("依頼者向け表示対象のステータス別件数"):
+            st.dataframe(
+                status_summary,
+                width="stretch",
+                hide_index=True,
+            )
+    st.markdown("### 問い合わせを検索")
+
+    with st.form("requester_search_form"):
+        search_mode = st.radio(
+            "検索方法",
+            ["問い合わせIDで検索", "依頼者名で検索"],
+            horizontal=True,
+        )
+
+        request_id_query = ""
+        requester_query = ""
+
+        if search_mode == "問い合わせIDで検索":
+            request_id_query = st.text_input(
+                "問い合わせID",
+                placeholder="例：REQ-20260701-001",
+            )
+        else:
+            requester_query = st.text_input(
+                "依頼者名",
+                placeholder="例：吉田 拓也",
+            )
+
+        search_submitted = st.form_submit_button("問い合わせ状況を確認")
+
+    if not search_submitted:
+        st.info("問い合わせIDまたは依頼者名を入力して検索してください。")
+        return
+
+    if not request_id_query.strip() and not requester_query.strip():
+        st.error("検索条件を入力してください。")
+        return
+        if not request_id_query.strip() and not requester_query.strip():
+            st.error("検索条件を入力してください。")
+            return
+
+    result_df = filter_requester_inquiries(
+        df,
+        request_id=request_id_query,
+        requester=requester_query,
+        include_hidden=False,
+    )
+
+    if result_df.empty:
+        st.warning("該当する問い合わせは見つかりませんでした。")
+        return
+
+    display_columns = get_requester_display_columns(result_df)
+    display_df = result_df[display_columns].copy()
+
+    display_df = format_date_columns_for_display(display_df)
+
+    column_config = {
+        "request_id": "問い合わせID",
+        "request_date": "受付日",
+        "requester": "依頼者",
+        "department": "部署",
+        "category": "カテゴリ",
+        "subcategory": "小分類",
+        "detail": "問い合わせ内容",
+        "additional_info": "追加情報",
+        "status": "ステータス",
+        "assignee": "担当者",
+        "due_date": "希望期限",
+        "completed_date": "完了日",
+        "response_summary": "管理部からの回答・対応内容",
+    }
+
+    st.markdown("### 問い合わせ状況")
+
+    st.dataframe(
+        display_df,
+        width="stretch",
+        hide_index=True,
+        column_config=column_config,
+    )
+
+    st.markdown("### 詳細確認")
+
+    for _, row in display_df.iterrows():
+        request_id = row.get("request_id", "")
+
+        with st.expander(f"問い合わせID：{request_id}", expanded=len(display_df) == 1):
+            st.write(f"**受付日**：{row.get('request_date', '')}")
+            st.write(f"**依頼者**：{row.get('requester', '')}（{row.get('department', '')}）")
+            st.write(f"**カテゴリ**：{row.get('category', '')} / {row.get('subcategory', '')}")
+            st.write(f"**ステータス**：{row.get('status', '')}")
+            st.write(f"**担当者**：{row.get('assignee', '') or '未設定'}")
+            st.write(f"**希望期限**：{row.get('due_date', '')}")
+            st.write(f"**完了日**：{row.get('completed_date', '') or '未完了'}")
+            st.write("**問い合わせ内容**：")
+            st.write(row.get("detail", ""))
+
+            if row.get("additional_info"):
+                st.write("**追加情報**：")
+                st.text(row.get("additional_info", ""))
+
+            if row.get("response_summary"):
+                st.write("**管理部からの回答・対応内容**：")
+                st.write(row.get("response_summary", ""))
+            else:
+                st.info("管理部からの回答・対応内容はまだ登録されていません。")
+
+    with st.expander("この画面で表示しない情報"):
+        st.markdown(
+            """
+            依頼者向け画面では、以下のような管理部内部向け情報は表示しません。
+
+            - 管理作業時間
+            - 実対応時間
+            - 記録・管理上の問題
+            - FAQ候補フラグ
+            - FAQ回答案の下書き
+            """
+        )
 
 
 def show_simple_summary(df: pd.DataFrame) -> None:
@@ -569,7 +1107,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         display_overdue_df = format_date_columns_for_display(overdue_df)
         st.dataframe(
             display_overdue_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -583,21 +1121,21 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### カテゴリ別件数")
         st.dataframe(
             count_by(df, "category", "カテゴリ"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 担当者別件数")
         st.dataframe(
             count_by(df, "assignee", "担当者"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 部署別件数")
         st.dataframe(
             count_by(df, "department", "部署"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -605,21 +1143,21 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### ステータス別件数")
         st.dataframe(
             count_by(df, "status", "ステータス"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 受付経路別件数")
         st.dataframe(
             count_by(df, "channel", "受付経路"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
         st.markdown("#### 優先度別件数")
         st.dataframe(
             count_by(df, "priority", "優先度"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -633,7 +1171,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### 担当者別 作業時間")
         st.dataframe(
             effort_by(df, "assignee", "担当者"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -641,7 +1179,7 @@ def show_simple_summary(df: pd.DataFrame) -> None:
         st.markdown("#### カテゴリ別 作業時間")
         st.dataframe(
             effort_by(df, "category", "カテゴリ"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -656,9 +1194,64 @@ def show_simple_summary(df: pd.DataFrame) -> None:
     else:
         st.dataframe(
             response_summary,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
+
+    st.divider()
+
+    st.markdown("### Ver.2追加機能の集計")
+
+    ver2_metrics = summarize_ver2_metrics(df)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("要対応アラート", ver2_metrics["alert_count"])
+    col2.metric("FAQ候補", ver2_metrics["faq_candidate_count"])
+    col3.metric("追加情報あり", ver2_metrics["additional_info_count"])
+    col4.metric("追加情報入力率", f'{ver2_metrics["additional_info_rate"]}%')
+
+    col5, col6 = st.columns(2)
+    col5.metric("依頼者向け表示", ver2_metrics["requester_visible_count"])
+    col6.metric("依頼者向け非表示", ver2_metrics["requester_hidden_count"])
+
+    st.markdown("#### アラート種別別件数")
+    alert_summary_df = summarize_alerts(add_alert_columns(df))
+    st.dataframe(
+        alert_summary_df,
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.markdown("#### カテゴリ別FAQ候補件数")
+    faq_category_df = faq_candidate_by_category(df)
+
+    if faq_category_df.empty:
+        st.info("FAQ候補はまだ登録されていません。")
+    else:
+        st.dataframe(
+            faq_category_df,
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.markdown("#### カテゴリ別追加情報入力率")
+    additional_info_summary_df = category_additional_info_summary(df)
+
+    if additional_info_summary_df.empty:
+        st.info("追加情報の集計対象がありません。")
+    else:
+        st.dataframe(
+            additional_info_summary_df,
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.markdown("#### 依頼者向け表示制御")
+    st.dataframe(
+        requester_visible_summary(df),
+        width="stretch",
+        hide_index=True,
+    )
 
     st.divider()
 
@@ -671,14 +1264,20 @@ def main() -> None:
 
     df = load_inquiries()
 
-    tab_list, tab_create, tab_update, tab_summary = st.tabs(
+    tab_alert, tab_list, tab_create, tab_update, tab_faq, tab_requester, tab_summary = st.tabs(
         [
+            "要対応アラート",
             "問い合わせ一覧",
             "新規登録",
             "ステータス更新",
+            "FAQ候補管理",
+            "依頼者向け確認",
             "集計・CSV出力",
         ]
     )
+
+    with tab_alert:
+        show_alerts(df)
 
     with tab_list:
         st.header("問い合わせ一覧")
@@ -743,6 +1342,12 @@ def main() -> None:
 
     with tab_update:
         show_update_form(df)
+
+    with tab_faq:
+        show_faq_management(df)
+
+    with tab_requester:
+        show_requester_view(df)
 
     with tab_summary:
         st.header("集計・CSV出力")
