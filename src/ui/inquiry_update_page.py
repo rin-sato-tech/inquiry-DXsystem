@@ -16,8 +16,6 @@ from src.ui.components import (
 )
 from src.ui.cache_utils import clear_cache
 
-clear_cache()
-
 
 def show_inquiry_update_page(df: pd.DataFrame) -> None:
     """既存問い合わせの更新フォームを表示する。"""

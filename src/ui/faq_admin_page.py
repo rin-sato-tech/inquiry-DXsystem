@@ -17,8 +17,6 @@ from src.faq import (
 from src.ui.components import show_additional_info_block
 from src.ui.cache_utils import clear_cache
 
-clear_cache()
-
 
 def show_faq_admin_page(df: pd.DataFrame) -> None:
     """FAQ候補管理画面を表示する。"""

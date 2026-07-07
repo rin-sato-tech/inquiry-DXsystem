@@ -17,8 +17,6 @@ from src.master_data import (
 from src.ui.components import index_or_zero, render_category_additional_fields
 from src.ui.cache_utils import clear_cache
 
-clear_cache()
-
 
 def show_inquiry_create_page() -> None:
     """新規問い合わせ登録フォームを表示する。"""
