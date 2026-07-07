@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 import streamlit as st
 
@@ -15,6 +13,15 @@ from src.ui.faq_admin_page import show_faq_admin_page
 from src.ui.inquiry_list_page import show_inquiry_list_page
 from src.ui.requester_page import show_requester_page
 from src.ui.report_page import show_report_page
+from src.services.auth_service import (
+    get_available_page_labels,
+    get_current_role,
+    get_page_key_by_label,
+    initialize_auth_state,
+    is_logged_in,
+)
+from src.ui.auth_components import show_login_status
+from src.ui.login_page import show_login_page
 
 st.set_page_config(
     page_title="社内問い合わせ管理システム",
@@ -37,43 +44,63 @@ def load_inquiries() -> pd.DataFrame:
 
 
 def main() -> None:
+    initialize_auth_state()
+
     st.title("社内問い合わせ管理システム")
     st.caption("管理部に寄せられる社内問い合わせ・依頼対応を一元管理するためのデモアプリです。")
 
+    if not is_logged_in():
+        show_login_page()
+        return
+
+    show_login_status()
+
+    role = get_current_role()
+    if role is None:
+        st.error("ロール情報を取得できません。再ログインしてください。")
+        return
+
+    page_labels = get_available_page_labels(role)
+    selected_label = st.sidebar.radio("メニュー", page_labels)
+    page_key = get_page_key_by_label(role, selected_label)
+
     df = load_inquiries()
 
-    tab_alert, tab_list, tab_create, tab_update, tab_faq, tab_requester, tab_summary = st.tabs(
-        [
-            "要対応アラート",
-            "問い合わせ一覧",
-            "新規登録",
-            "ステータス更新",
-            "FAQ候補管理",
-            "依頼者向け確認",
-            "集計・CSV出力",
-        ]
-    )
-
-    with tab_alert:
+    if page_key == "alert":
         show_alert_page(df)
 
-    with tab_list:
+    elif page_key == "inquiry_list":
         show_inquiry_list_page(df)
 
-    with tab_create:
+    elif page_key == "inquiry_create":
         show_inquiry_create_page()
 
-    with tab_update:
+    elif page_key == "inquiry_update":
         show_inquiry_update_page(df)
 
-    with tab_faq:
+    elif page_key == "faq_admin":
         show_faq_admin_page(df)
 
-    with tab_requester:
+    elif page_key == "requester_inquiries":
         show_requester_page(df)
 
-    with tab_summary:
+    elif page_key == "report":
         show_report_page(df)
+
+    elif page_key == "requester_home":
+        st.header("依頼者トップ")
+        st.info("依頼者トップ画面はWBS5で本格実装します。")
+        st.markdown("- FAQ検索")
+        st.markdown("- 新規問い合わせ")
+        st.markdown("- 自分の問い合わせ確認")
+
+    elif page_key == "faq_public":
+        st.header("FAQ検索")
+        st.info("FAQ公開・検索画面はWBS4で本格実装します。")
+        st.caption("WBS3では、ロール別メニューにFAQ検索を表示するところまで確認します。")
+
+    else:
+        st.error(f"未対応のページです: {page_key}")
 
 
 if __name__ == "__main__":
