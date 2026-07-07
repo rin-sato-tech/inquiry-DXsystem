@@ -23,6 +23,7 @@ from src.services.auth_service import (
 )
 from src.ui.auth_components import show_login_status
 from src.ui.login_page import show_login_page
+from src.ui.faq_public_page import show_faq_public_page
 
 st.set_page_config(
     page_title="社内問い合わせ管理システム",
@@ -100,9 +101,7 @@ def main() -> None:
         st.markdown("- 自分の問い合わせ確認")
 
     elif page_key == "faq_public":
-        st.header("FAQ検索")
-        st.info("FAQ公開・検索画面はWBS4で本格実装します。")
-        st.caption("WBS3では、ロール別メニューにFAQ検索を表示するところまで確認します。")
+        show_faq_public_page()
 
     else:
         st.error(f"未対応のページです: {page_key}")

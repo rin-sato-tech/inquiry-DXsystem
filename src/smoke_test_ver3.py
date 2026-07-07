@@ -14,6 +14,9 @@ from src.db import (
     insert_status_history,
     migrate_faq_candidates_to_faq_items,
     seed_initial_users,
+    fetch_faq_items,
+    increment_faq_helpful_count,
+    increment_faq_view_count,
 )
 from src.services.auth_service import get_available_page_keys
 
@@ -30,6 +33,32 @@ def check_role_pages() -> None:
     assert "inquiry_update" not in get_available_page_keys("viewer")
 
     print("ロール別ページ設定の確認が完了しました。")
+
+
+def check_faq_public_functions() -> None:
+    """FAQ公開関連の基本DB関数を確認する。"""
+    faq_items = fetch_faq_items(is_public=None)
+
+    if not faq_items:
+        print("FAQ項目がないため、FAQ公開機能の詳細確認はスキップします。")
+        return
+
+    faq = faq_items[0]
+    faq_id = faq["faq_id"]
+
+    before_view_count = int(faq["view_count"])
+    before_helpful_count = int(faq["helpful_count"])
+
+    increment_faq_view_count(faq_id)
+    increment_faq_helpful_count(faq_id)
+
+    updated = fetch_faq_items(is_public=None)
+    updated_faq = next(item for item in updated if item["faq_id"] == faq_id)
+
+    assert int(updated_faq["view_count"]) == before_view_count + 1
+    assert int(updated_faq["helpful_count"]) == before_helpful_count + 1
+
+    print("FAQ公開関連DB関数の確認が完了しました。")
 
 
 def main() -> None:
@@ -102,6 +131,7 @@ def main() -> None:
         print(f"{table_name}: {count}件")
 
     check_role_pages()
+    check_faq_public_functions()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 

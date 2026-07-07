@@ -16,6 +16,39 @@ from src.faq import (
 )
 from src.ui.components import show_additional_info_block
 from src.ui.cache_utils import clear_cache
+from src.services.auth_service import get_current_user
+from src.services.faq_service import (
+    create_public_faq_draft_from_candidate,
+    get_admin_faq_items,
+    save_faq_item,
+)
+
+def set_faq_admin_message(key: str, message_type: str, text: str) -> None:
+    """FAQ管理画面用の一時メッセージを保存する。"""
+    st.session_state[key] = {
+        "type": message_type,
+        "text": text,
+    }
+
+
+def show_faq_admin_message(key: str) -> None:
+    """FAQ管理画面用の一時メッセージを表示する。"""
+    message = st.session_state.pop(key, None)
+
+    if message is None:
+        return
+
+    message_type = message["type"]
+    text = message["text"]
+
+    if message_type == "success":
+        st.success(text)
+    elif message_type == "info":
+        st.info(text)
+    elif message_type == "error":
+        st.error(text)
+    else:
+        st.write(text)
 
 
 def show_faq_admin_page(df: pd.DataFrame) -> None:
@@ -216,4 +249,158 @@ def show_faq_admin_page(df: pd.DataFrame) -> None:
             - FAQ候補から外しても、FAQタイトル・FAQ回答案は下書きとして保持します。
             - Ver.2ではFAQ公開ページまでは作らず、FAQ候補を蓄積する段階までを対象とします。
             """
+        )
+
+    st.markdown("---")
+    st.markdown("### 公開FAQ管理（Ver.3）")
+
+    current_user = get_current_user()
+    user_id = current_user["user_id"] if current_user else "U003"
+
+    st.write(
+        "FAQ候補から依頼者向けの公開FAQ下書きを作成し、"
+        "内容を確認したうえで公開・非公開を切り替えます。"
+    )
+
+    st.markdown("#### FAQ候補から公開FAQ下書きを作成")
+
+    if candidates_df.empty:
+        st.info("公開FAQに変換できるFAQ候補がありません。")
+    else:
+        candidate_options = {
+            f'{row["request_id"]}｜{row["category"]}｜{row["faq_title"]}': row["request_id"]
+            for _, row in candidates_df.iterrows()
+        }
+
+        selected_candidate_label = st.selectbox(
+            "公開FAQに変換するFAQ候補",
+            list(candidate_options.keys()),
+        )
+
+        selected_request_id = candidate_options[selected_candidate_label]
+
+        if st.button("公開FAQ下書きを作成"):
+            try:
+                faq_id, created = create_public_faq_draft_from_candidate(
+                    request_id=selected_request_id,
+                    user_id=user_id,
+                )
+
+                if created:
+                    set_faq_admin_message(
+                        key="faq_draft_message",
+                        message_type="success",
+                        text=f"公開FAQ下書きを作成しました: {faq_id}",
+                    )
+                else:
+                    set_faq_admin_message(
+                        key="faq_draft_message",
+                        message_type="info",
+                        text=f"このFAQ候補はすでに公開FAQ下書きになっています: {faq_id}",
+                    )
+
+                clear_cache()
+                st.rerun()
+
+            except ValueError as error:
+                set_faq_admin_message(
+                    key="faq_draft_message",
+                    message_type="error",
+                    text=str(error),
+                )
+                st.rerun()
+
+        show_faq_admin_message("faq_draft_message")
+
+    st.markdown("#### 公開FAQ一覧・編集")
+
+    faq_items = get_admin_faq_items()
+
+    if not faq_items:
+        st.info("公開FAQ下書きはまだありません。")
+        return
+
+    faq_options = {
+        f'{faq["faq_id"]}|{"公開" if faq["is_public"] else "非公開"}|{faq["title"]}': faq["faq_id"]
+        for faq in faq_items
+    }
+
+    selected_faq_label = st.selectbox(
+        "編集するFAQ",
+        list(faq_options.keys()),
+    )
+
+    selected_faq_id = faq_options[selected_faq_label]
+    selected_faq = next(faq for faq in faq_items if faq["faq_id"] == selected_faq_id)
+
+    edit_title = st.text_input(
+        "FAQタイトル",
+        value=selected_faq["title"],
+        key=f"faq_title_{selected_faq_id}",
+    )
+
+    edit_category = st.text_input(
+        "カテゴリ",
+        value=selected_faq["category"],
+        key=f"faq_category_{selected_faq_id}",
+    )
+
+    edit_answer = st.text_area(
+        "FAQ回答",
+        value=selected_faq["answer"],
+        height=180,
+        key=f"faq_answer_{selected_faq_id}",
+    )
+
+    edit_is_public = st.checkbox(
+        "依頼者向けに公開する",
+        value=bool(selected_faq["is_public"]),
+        key=f"faq_public_{selected_faq_id}",
+    )
+
+    col_save, col_status = st.columns([1, 2])
+
+    with col_save:
+        if st.button("FAQを保存", type="primary"):
+            try:
+                updated = save_faq_item(
+                    faq_id=selected_faq_id,
+                    title=edit_title,
+                    answer=edit_answer,
+                    category=edit_category,
+                    is_public=edit_is_public,
+                    user_id=user_id,
+                )
+
+                if updated:
+                    set_faq_admin_message(
+                        key="faq_save_message",
+                        message_type="success",
+                        text="FAQを保存しました。",
+                    )
+                else:
+                    set_faq_admin_message(
+                        key="faq_save_message",
+                        message_type="info",
+                        text="同じ内容で登録されています。変更はありません。",
+                    )
+
+                clear_cache()
+                st.rerun()
+
+            except ValueError as error:
+                set_faq_admin_message(
+                    key="faq_save_message",
+                    message_type="error",
+                    text=str(error),
+                )
+                st.rerun()
+
+        show_faq_admin_message("faq_save_message")
+
+    with col_status:
+        st.caption(
+            f'閲覧数: {selected_faq["view_count"]} / '
+            f'役立ち件数: {selected_faq["helpful_count"]} / '
+            f'最終更新: {selected_faq["updated_at"]}'
         )

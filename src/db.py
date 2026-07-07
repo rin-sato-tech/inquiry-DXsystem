@@ -817,6 +817,273 @@ def update_notification_status(
         conn.commit()
 
 
+def fetch_faq_items(
+    is_public: bool | None = None,
+    category: str | None = None,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    """FAQ一覧を取得する。公開状態・カテゴリ・キーワードで絞り込める。"""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if is_public is not None:
+        conditions.append("is_public = ?")
+        params.append(1 if is_public else 0)
+
+    if category:
+        conditions.append("category = ?")
+        params.append(category)
+
+    if keyword:
+        conditions.append(
+            """
+            (
+                title LIKE ?
+                OR answer LIKE ?
+                OR category LIKE ?
+            )
+            """
+        )
+        like_keyword = f"%{keyword}%"
+        params.extend([like_keyword, like_keyword, like_keyword])
+
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    sql = f"""
+    SELECT *
+    FROM faq_items
+    {where_clause}
+    ORDER BY is_public DESC, updated_at DESC, faq_id ASC
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def fetch_faq_item_by_id(faq_id: str) -> dict[str, Any] | None:
+    """FAQ IDを指定してFAQを1件取得する。"""
+    sql = """
+    SELECT *
+    FROM faq_items
+    WHERE faq_id = ?
+    """
+
+    with get_connection() as conn:
+        row = conn.execute(sql, (faq_id,)).fetchone()
+
+    return dict(row) if row else None
+
+
+def fetch_faq_categories(is_public: bool | None = None) -> list[str]:
+    """FAQカテゴリ一覧を取得する。"""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if is_public is not None:
+        conditions.append("is_public = ?")
+        params.append(1 if is_public else 0)
+
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    sql = f"""
+    SELECT DISTINCT category
+    FROM faq_items
+    {where_clause}
+    WHERE category IS NOT NULL AND TRIM(category) != ''
+    ORDER BY category
+    """
+
+    # 上のSQLは where_clause が空でない場合に WHERE が二重になるため、分岐で書き直す
+    if conditions:
+        sql = """
+        SELECT DISTINCT category
+        FROM faq_items
+        WHERE is_public = ?
+          AND category IS NOT NULL
+          AND TRIM(category) != ''
+        ORDER BY category
+        """
+    else:
+        sql = """
+        SELECT DISTINCT category
+        FROM faq_items
+        WHERE category IS NOT NULL
+          AND TRIM(category) != ''
+        ORDER BY category
+        """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    return [row["category"] for row in rows]
+
+
+def create_faq_item_from_candidate(
+    request_id: str,
+    created_by: str = "U003",
+) -> tuple[str, bool]:
+    """
+    FAQ候補から公開FAQ下書きを1件作成する。
+
+    既に同じ source_request_id のFAQがある場合は、既存FAQ IDを返す。
+    戻り値は (faq_id, created)。
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    select_sql = """
+    SELECT
+        request_id,
+        category,
+        faq_title,
+        faq_answer
+    FROM inquiries
+    WHERE request_id = ?
+      AND faq_candidate = 1
+      AND TRIM(COALESCE(faq_title, '')) != ''
+      AND TRIM(COALESCE(faq_answer, '')) != ''
+    """
+
+    exists_sql = """
+    SELECT faq_id
+    FROM faq_items
+    WHERE source_request_id = ?
+    """
+
+    insert_sql = """
+    INSERT INTO faq_items (
+        faq_id,
+        source_request_id,
+        category,
+        title,
+        answer,
+        is_public,
+        view_count,
+        helpful_count,
+        created_by,
+        updated_by,
+        created_at,
+        updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        candidate = conn.execute(select_sql, (request_id,)).fetchone()
+
+        if candidate is None:
+            raise ValueError(f"FAQ候補が見つかりません: {request_id}")
+
+        existing = conn.execute(exists_sql, (request_id,)).fetchone()
+        if existing:
+            return existing["faq_id"], False
+
+        faq_id = generate_sequential_id(
+            table_name="faq_items",
+            id_column="faq_id",
+            prefix="FAQ",
+        )
+
+        conn.execute(
+            insert_sql,
+            (
+                faq_id,
+                candidate["request_id"],
+                candidate["category"],
+                candidate["faq_title"],
+                candidate["faq_answer"],
+                created_by,
+                created_by,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return faq_id, True
+
+
+def update_faq_item(
+    faq_id: str,
+    title: str,
+    answer: str,
+    category: str,
+    is_public: bool,
+    updated_by: str = "",
+) -> None:
+    """FAQの内容と公開状態を更新する。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    UPDATE faq_items
+    SET
+        title = ?,
+        answer = ?,
+        category = ?,
+        is_public = ?,
+        updated_by = ?,
+        updated_at = ?
+    WHERE faq_id = ?
+    """
+
+    with get_connection() as conn:
+        cursor = conn.execute(
+            sql,
+            (
+                title,
+                answer,
+                category,
+                1 if is_public else 0,
+                updated_by,
+                now,
+                faq_id,
+            ),
+        )
+        conn.commit()
+
+    if cursor.rowcount == 0:
+        raise ValueError(f"FAQが見つかりません: {faq_id}")
+
+
+def increment_faq_view_count(faq_id: str) -> None:
+    """FAQ閲覧数を1増やす。"""
+    sql = """
+    UPDATE faq_items
+    SET
+        view_count = view_count + 1,
+        updated_at = ?
+    WHERE faq_id = ?
+    """
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection() as conn:
+        conn.execute(sql, (now, faq_id))
+        conn.commit()
+
+
+def increment_faq_helpful_count(faq_id: str) -> None:
+    """FAQ役立ち件数を1増やす。"""
+    sql = """
+    UPDATE faq_items
+    SET
+        helpful_count = helpful_count + 1,
+        updated_at = ?
+    WHERE faq_id = ?
+    """
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection() as conn:
+        conn.execute(sql, (now, faq_id))
+        conn.commit()
+
+
 if __name__ == "__main__":
     init_db()
     print(f"DBを初期化しました: {DB_PATH}")
