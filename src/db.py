@@ -519,6 +519,304 @@ def fetch_table_count(table_name: str) -> int:
     return int(row["count"])
 
 
+def generate_comment_id() -> str:
+    """コメントIDを発行する。"""
+    return generate_sequential_id(
+        table_name="inquiry_comments",
+        id_column="comment_id",
+        prefix="COM",
+    )
+
+
+def generate_status_history_id() -> str:
+    """ステータス履歴IDを発行する。"""
+    return generate_sequential_id(
+        table_name="status_history",
+        id_column="history_id",
+        prefix="STH",
+    )
+
+
+def generate_operation_log_id() -> str:
+    """操作ログIDを発行する。"""
+    return generate_sequential_id(
+        table_name="operation_logs",
+        id_column="log_id",
+        prefix="LOG",
+    )
+
+
+def generate_notification_id() -> str:
+    """通知ログIDを発行する。"""
+    return generate_sequential_id(
+        table_name="notification_logs",
+        id_column="notification_id",
+        prefix="NTF",
+    )
+
+
+def insert_inquiry_comment(
+    request_id: str,
+    comment_body: str,
+    visibility: str = "internal",
+    created_by: str = "",
+) -> str:
+    """問い合わせコメントを追加する。"""
+    if visibility not in {"internal", "requester"}:
+        raise ValueError(f"不正なvisibilityです: {visibility}")
+
+    comment_id = generate_comment_id()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    INSERT INTO inquiry_comments (
+        comment_id,
+        request_id,
+        comment_body,
+        visibility,
+        created_by,
+        created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        conn.execute(
+            sql,
+            (
+                comment_id,
+                request_id,
+                comment_body,
+                visibility,
+                created_by,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return comment_id
+
+
+def fetch_comments_by_request_id(request_id: str) -> list[dict[str, Any]]:
+    """問い合わせIDに紐づくコメントを取得する。"""
+    sql = """
+    SELECT *
+    FROM inquiry_comments
+    WHERE request_id = ?
+    ORDER BY created_at ASC, comment_id ASC
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (request_id,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def insert_status_history(
+    request_id: str,
+    old_status: str,
+    new_status: str,
+    changed_by: str = "",
+) -> str:
+    """ステータス変更履歴を追加する。"""
+    history_id = generate_status_history_id()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    INSERT INTO status_history (
+        history_id,
+        request_id,
+        old_status,
+        new_status,
+        changed_by,
+        changed_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        conn.execute(
+            sql,
+            (
+                history_id,
+                request_id,
+                old_status,
+                new_status,
+                changed_by,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return history_id
+
+
+def fetch_status_history_by_request_id(request_id: str) -> list[dict[str, Any]]:
+    """問い合わせIDに紐づくステータス履歴を取得する。"""
+    sql = """
+    SELECT *
+    FROM status_history
+    WHERE request_id = ?
+    ORDER BY changed_at ASC, history_id ASC
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (request_id,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def insert_operation_log(
+    action: str,
+    target_table: str,
+    target_id: str,
+    user_id: str = "",
+    detail: str = "",
+) -> str:
+    """操作ログを追加する。"""
+    log_id = generate_operation_log_id()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    INSERT INTO operation_logs (
+        log_id,
+        user_id,
+        action,
+        target_table,
+        target_id,
+        detail,
+        created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        conn.execute(
+            sql,
+            (
+                log_id,
+                user_id,
+                action,
+                target_table,
+                target_id,
+                detail,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return log_id
+
+
+def fetch_operation_logs(limit: int = 100) -> list[dict[str, Any]]:
+    """操作ログを新しい順に取得する。"""
+    sql = """
+    SELECT *
+    FROM operation_logs
+    ORDER BY created_at DESC, log_id DESC
+    LIMIT ?
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (limit,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def insert_notification_log(
+    request_id: str,
+    notification_type: str,
+    message: str,
+    recipient_user_id: str = "",
+    status: str = "created",
+) -> str:
+    """通知ログを追加する。"""
+    allowed_types = {
+        "before_due",
+        "overdue",
+        "unassigned",
+        "waiting_too_long",
+        "status_changed",
+        "completed",
+    }
+    allowed_statuses = {"created", "reviewed", "skipped", "sent"}
+
+    if notification_type not in allowed_types:
+        raise ValueError(f"不正なnotification_typeです: {notification_type}")
+
+    if status not in allowed_statuses:
+        raise ValueError(f"不正なstatusです: {status}")
+
+    notification_id = generate_notification_id()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    INSERT INTO notification_logs (
+        notification_id,
+        request_id,
+        notification_type,
+        recipient_user_id,
+        message,
+        status,
+        created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        conn.execute(
+            sql,
+            (
+                notification_id,
+                request_id,
+                notification_type,
+                recipient_user_id,
+                message,
+                status,
+                now,
+            ),
+        )
+        conn.commit()
+
+    return notification_id
+
+
+def fetch_notification_logs(limit: int = 100) -> list[dict[str, Any]]:
+    """通知ログを新しい順に取得する。"""
+    sql = """
+    SELECT *
+    FROM notification_logs
+    ORDER BY created_at DESC, notification_id DESC
+    LIMIT ?
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (limit,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def update_notification_status(
+    notification_id: str,
+    status: str,
+) -> None:
+    """通知ログの状態を更新する。"""
+    allowed_statuses = {"created", "reviewed", "skipped", "sent"}
+
+    if status not in allowed_statuses:
+        raise ValueError(f"不正なstatusです: {status}")
+
+    sql = """
+    UPDATE notification_logs
+    SET status = ?
+    WHERE notification_id = ?
+    """
+
+    with get_connection() as conn:
+        conn.execute(sql, (status, notification_id))
+        conn.commit()
+
+
 if __name__ == "__main__":
     init_db()
     print(f"DBを初期化しました: {DB_PATH}")
