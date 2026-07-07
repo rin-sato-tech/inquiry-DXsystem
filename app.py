@@ -17,6 +17,7 @@ from src.services.auth_service import (
     get_available_page_labels,
     get_current_role,
     get_page_key_by_label,
+    has_permission,
     initialize_auth_state,
     is_logged_in,
 )
@@ -63,6 +64,10 @@ def main() -> None:
     page_labels = get_available_page_labels(role)
     selected_label = st.sidebar.radio("メニュー", page_labels)
     page_key = get_page_key_by_label(role, selected_label)
+
+    if not has_permission(page_key, role):
+        st.error("この画面を利用する権限がありません。")
+        return
 
     df = load_inquiries()
 
