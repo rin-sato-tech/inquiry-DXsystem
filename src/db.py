@@ -262,6 +262,263 @@ def generate_request_id(target_date: str) -> str:
     return f"{prefix}{next_number:03d}"
 
 
+ALLOWED_ID_TARGETS = {
+    ("faq_items", "faq_id"),
+    ("inquiry_comments", "comment_id"),
+    ("status_history", "history_id"),
+    ("operation_logs", "log_id"),
+    ("notification_logs", "notification_id"),
+}
+
+
+def generate_sequential_id(
+    table_name: str,
+    id_column: str,
+    prefix: str,
+    digits: int = 4,
+) -> str:
+    """指定テーブルのIDを、PREFIX-0001形式で発行する。"""
+    if (table_name, id_column) not in ALLOWED_ID_TARGETS:
+        raise ValueError(f"ID生成対象外です: {table_name}.{id_column}")
+
+    sql = f"""
+    SELECT {id_column}
+    FROM {table_name}
+    WHERE {id_column} LIKE ?
+    ORDER BY {id_column} DESC
+    LIMIT 1
+    """
+
+    with get_connection() as conn:
+        row = conn.execute(sql, (f"{prefix}-%",)).fetchone()
+
+    if row is None:
+        next_number = 1
+    else:
+        last_id = row[id_column]
+        last_number = int(str(last_id).split("-")[-1])
+        next_number = last_number + 1
+
+    return f"{prefix}-{next_number:0{digits}d}"
+
+
+INITIAL_USERS = [
+    {
+        "user_id": "U001",
+        "user_name": "山田 太郎",
+        "department": "営業部",
+        "email": "yamada@example.com",
+        "role": "requester",
+    },
+    {
+        "user_id": "U002",
+        "user_name": "佐藤 花子",
+        "department": "管理部",
+        "email": "sato@example.com",
+        "role": "staff",
+    },
+    {
+        "user_id": "U003",
+        "user_name": "鈴木 一郎",
+        "department": "管理部",
+        "email": "suzuki@example.com",
+        "role": "admin",
+    },
+    {
+        "user_id": "U004",
+        "user_name": "高橋 美咲",
+        "department": "経営企画部",
+        "email": "takahashi@example.com",
+        "role": "viewer",
+    },
+]
+
+
+def seed_initial_users() -> int:
+    """Ver.3用の初期ユーザーを登録する。既存ユーザーは上書きしない。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    sql = """
+    INSERT OR IGNORE INTO users (
+        user_id,
+        user_name,
+        department,
+        email,
+        role,
+        is_active,
+        created_at,
+        updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+    """
+
+    with get_connection() as conn:
+        count = 0
+        for user in INITIAL_USERS:
+            cursor = conn.execute(
+                sql,
+                (
+                    user["user_id"],
+                    user["user_name"],
+                    user["department"],
+                    user["email"],
+                    user["role"],
+                    now,
+                    now,
+                ),
+            )
+            count += cursor.rowcount
+        conn.commit()
+
+    return count
+
+
+def fetch_active_users() -> list[dict[str, Any]]:
+    """有効なユーザーを取得する。"""
+    sql = """
+    SELECT *
+    FROM users
+    WHERE is_active = 1
+    ORDER BY user_id
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def fetch_user_by_id(user_id: str) -> dict[str, Any] | None:
+    """user_idを指定してユーザーを1件取得する。"""
+    sql = """
+    SELECT *
+    FROM users
+    WHERE user_id = ?
+    """
+
+    with get_connection() as conn:
+        row = conn.execute(sql, (user_id,)).fetchone()
+
+    return dict(row) if row else None
+
+
+def migrate_faq_candidates_to_faq_items(created_by: str = "U003") -> int:
+    """
+    inquiries のFAQ候補から faq_items を作成する。
+
+    既に同じ source_request_id のFAQがある場合は作成しない。
+    初期状態では非公開にする。
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    select_sql = """
+    SELECT
+        request_id,
+        category,
+        faq_title,
+        faq_answer
+    FROM inquiries
+    WHERE faq_candidate = 1
+      AND TRIM(COALESCE(faq_title, '')) != ''
+      AND TRIM(COALESCE(faq_answer, '')) != ''
+    """
+
+    exists_sql = """
+    SELECT faq_id
+    FROM faq_items
+    WHERE source_request_id = ?
+    """
+
+    last_id_sql = """
+    SELECT faq_id
+    FROM faq_items
+    WHERE faq_id LIKE 'FAQ-%'
+    ORDER BY faq_id DESC
+    LIMIT 1
+    """
+
+    insert_sql = """
+    INSERT INTO faq_items (
+        faq_id,
+        source_request_id,
+        category,
+        title,
+        answer,
+        is_public,
+        view_count,
+        helpful_count,
+        created_by,
+        updated_by,
+        created_at,
+        updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(select_sql).fetchall()
+
+        last_id_row = conn.execute(last_id_sql).fetchone()
+        if last_id_row is None:
+            next_number = 1
+        else:
+            last_id = str(last_id_row["faq_id"])
+            next_number = int(last_id.split("-")[-1]) + 1
+
+        count = 0
+
+        for row in rows:
+            exists = conn.execute(exists_sql, (row["request_id"],)).fetchone()
+            if exists:
+                continue
+
+            faq_id = f"FAQ-{next_number:04d}"
+            next_number += 1
+
+            conn.execute(
+                insert_sql,
+                (
+                    faq_id,
+                    row["request_id"],
+                    row["category"],
+                    row["faq_title"],
+                    row["faq_answer"],
+                    created_by,
+                    created_by,
+                    now,
+                    now,
+                ),
+            )
+            count += 1
+
+        conn.commit()
+
+    return count
+
+
+def fetch_table_count(table_name: str) -> int:
+    """指定テーブルの件数を取得する。"""
+    allowed_tables = {
+        "inquiries",
+        "users",
+        "faq_items",
+        "inquiry_comments",
+        "status_history",
+        "operation_logs",
+        "notification_logs",
+    }
+
+    if table_name not in allowed_tables:
+        raise ValueError(f"確認対象外のテーブルです: {table_name}")
+
+    sql = f"SELECT COUNT(*) AS count FROM {table_name}"
+
+    with get_connection() as conn:
+        row = conn.execute(sql).fetchone()
+
+    return int(row["count"])
+
+
 if __name__ == "__main__":
     init_db()
     print(f"DBを初期化しました: {DB_PATH}")
