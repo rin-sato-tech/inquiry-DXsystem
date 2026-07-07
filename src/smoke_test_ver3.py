@@ -15,6 +15,21 @@ from src.db import (
     migrate_faq_candidates_to_faq_items,
     seed_initial_users,
 )
+from src.services.auth_service import get_available_page_keys
+
+
+def check_role_pages() -> None:
+    assert "requester_home" in get_available_page_keys("requester")
+    assert "alert" not in get_available_page_keys("requester")
+
+    assert "alert" in get_available_page_keys("staff")
+    assert "report" not in get_available_page_keys("staff")
+
+    assert "report" in get_available_page_keys("admin")
+    assert "report" in get_available_page_keys("viewer")
+    assert "inquiry_update" not in get_available_page_keys("viewer")
+
+    print("ロール別ページ設定の確認が完了しました。")
 
 
 def main() -> None:
@@ -85,6 +100,8 @@ def main() -> None:
     ]:
         count = fetch_table_count(table_name)
         print(f"{table_name}: {count}件")
+
+    check_role_pages()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 
