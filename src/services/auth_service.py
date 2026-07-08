@@ -47,6 +47,10 @@ PAGE_CONFIGS: dict[str, PageConfig] = {
         "label": "集計・CSV出力",
         "role_group": "viewer",
     },
+        "history": {
+        "label": "履歴確認",
+        "role_group": "admin",
+    },
 }
 
 
@@ -74,6 +78,7 @@ ROLE_PAGES: dict[str, list[str]] = {
         "inquiry_create",
         "requester_inquiries",
         "report",
+        "history",
     ],
     "viewer": [
         "report",

@@ -15,6 +15,14 @@ from src.ui.components import (
     make_update_label
 )
 from src.ui.cache_utils import clear_cache
+from src.services.auth_service import get_current_user
+from src.services.history_service import (
+    add_inquiry_comment,
+    get_comments_for_staff,
+    get_status_history,
+    get_user_id,
+    record_inquiry_update_history,
+)
 
 
 def show_inquiry_update_page(df: pd.DataFrame) -> None:
@@ -161,6 +169,20 @@ def show_inquiry_update_page(df: pd.DataFrame) -> None:
         }
 
         try:
+            current_user = get_current_user()
+            user_id = get_user_id(current_user)
+
+            changed_fields = record_inquiry_update_history(
+                request_id=selected_request_id,
+                before=current,
+                updates=updates,
+                user_id=user_id,
+            )
+
+            if not changed_fields:
+                st.info("同じ内容で登録されています。変更はありません。")
+                return
+
             update_inquiry(selected_request_id, updates)
             clear_cache()
             st.success(f"問い合わせを更新しました: {selected_request_id}")
@@ -173,3 +195,83 @@ def show_inquiry_update_page(df: pd.DataFrame) -> None:
         except Exception as exc:
             st.error("更新に失敗しました。")
             st.exception(exc)
+
+    st.markdown("---")
+    st.markdown("### コメント履歴")
+
+    comments = get_comments_for_staff(selected_request_id)
+
+    if comments:
+        for comment in comments:
+            visibility_label = (
+                "依頼者にも表示"
+                if comment["visibility"] == "requester"
+                else "内部メモ"
+            )
+
+            with st.container(border=True):
+                st.caption(
+                    f'{visibility_label} / '
+                    f'作成者: {comment.get("created_by", "") or "不明"} / '
+                    f'作成日時: {comment.get("created_at", "")}'
+                )
+                st.write(comment.get("comment_body", ""))
+    else:
+        st.info("コメントはまだありません。")
+
+    st.markdown("#### コメントを追加")
+
+    with st.form(f"add_comment_form_{selected_request_id}", clear_on_submit=True):
+        comment_body = st.text_area(
+            "コメント本文",
+            height=100,
+            placeholder="対応経緯、依頼者への補足、内部メモなどを記録します。",
+        )
+
+        visibility_label = st.radio(
+            "表示区分",
+            ["内部メモ", "依頼者にも表示"],
+            horizontal=True,
+        )
+
+        submitted_comment = st.form_submit_button("コメントを追加")
+
+        if submitted_comment:
+            visibility = "requester" if visibility_label == "依頼者にも表示" else "internal"
+
+            try:
+                current_user = get_current_user()
+                user_id = get_user_id(current_user)
+
+                add_inquiry_comment(
+                    request_id=selected_request_id,
+                    comment_body=comment_body,
+                    visibility=visibility,
+                    user_id=user_id,
+                )
+
+                clear_cache()
+                st.success("コメントを追加しました。")
+                st.rerun()
+
+            except ValueError as error:
+                st.error(str(error))
+
+    st.markdown("---")
+    st.markdown("### ステータス履歴")
+
+    status_histories = get_status_history(selected_request_id)
+
+    if not status_histories:
+        st.info("ステータス変更履歴はまだありません。")
+    else:
+        for history in status_histories:
+            with st.container(border=True):
+                st.caption(
+                    f'変更者: {history.get("changed_by", "") or "不明"} / '
+                    f'変更日時: {history.get("changed_at", "")}'
+                )
+                st.write(
+                    f'{history.get("old_status", "") or "未設定"} '
+                    f'→ {history.get("new_status", "")}'
+                )

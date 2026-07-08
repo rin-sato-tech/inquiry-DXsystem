@@ -17,6 +17,7 @@ from src.master_data import (
 from src.ui.components import index_or_zero, render_category_additional_fields
 from src.ui.cache_utils import clear_cache
 from src.services.auth_service import get_current_role, get_current_user
+from src.services.history_service import get_user_id, record_inquiry_created
 
 
 def show_inquiry_create_page() -> None:
@@ -177,6 +178,13 @@ def show_inquiry_create_page() -> None:
 
         try:
             upsert_inquiry(record)
+            current_user = get_current_user()
+            user_id = get_user_id(current_user)
+
+            record_inquiry_created(
+                request_id=request_id,
+                user_id=user_id,
+            )
             clear_cache()
             st.success(f"問い合わせを登録しました: {request_id}")
             st.info("一覧画面に戻ると、登録した問い合わせを確認できます。")

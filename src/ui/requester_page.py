@@ -10,6 +10,7 @@ from src.services.requester_service import (
     filter_requester_inquiries_by_status,
     get_requester_summary,
 )
+from src.services.history_service import get_comments_for_requester
 
 
 def show_requester_page(df: pd.DataFrame) -> None:
@@ -150,3 +151,11 @@ def show_requester_page(df: pd.DataFrame) -> None:
             if response_summary:
                 st.markdown("#### 管理部からの回答・対応内容")
                 st.write(response_summary)
+
+            requester_comments = get_comments_for_requester(request_id)
+            if requester_comments:
+                st.markdown("#### 管理部からの補足コメント")
+                for comment in requester_comments:
+                    with st.container(border=True):
+                        st.caption(f'作成日時: {comment.get("created_at", "")}')
+                        st.write(comment.get("comment_body", ""))
