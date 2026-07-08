@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import pandas as pd
 
 from src.db import (
@@ -33,6 +35,15 @@ from src.services.history_service import (
     get_status_history,
     record_inquiry_created,
     record_status_history_if_changed,
+)
+from src.services.notification_service import (
+    extract_before_due_targets,
+    extract_notification_targets,
+    extract_overdue_targets,
+    extract_unassigned_targets,
+    extract_waiting_too_long_targets,
+    generate_notification_message,
+    save_notification_target,
 )
 
 
@@ -218,6 +229,100 @@ def check_history_functions() -> None:
     print("WBS6履歴系サービス関数の確認が完了しました。")
 
 
+def check_notification_functions() -> None:
+    """WBS7の通知対象抽出・通知文生成を確認する。"""
+    today = date.today()
+
+    df = pd.DataFrame(
+        [
+            {
+                "request_id": "REQ-NOTIFY-001",
+                "requester": "山田 太郎",
+                "department": "営業部",
+                "category": "PC・システム",
+                "status": "対応中",
+                "assignee": "藤原 直子",
+                "due_date": (today + timedelta(days=2)).isoformat(),
+                "priority": "中",
+                "last_status_changed_at": today.isoformat(),
+                "updated_at": today.isoformat(),
+                "request_date": today.isoformat(),
+            },
+            {
+                "request_id": "REQ-NOTIFY-002",
+                "requester": "佐藤 花子",
+                "department": "管理部",
+                "category": "経費・請求",
+                "status": "未対応",
+                "assignee": "",
+                "due_date": (today - timedelta(days=1)).isoformat(),
+                "priority": "高",
+                "last_status_changed_at": today.isoformat(),
+                "updated_at": today.isoformat(),
+                "request_date": today.isoformat(),
+            },
+            {
+                "request_id": "REQ-NOTIFY-003",
+                "requester": "田中 次郎",
+                "department": "業務部",
+                "category": "アカウント・権限",
+                "status": "情報待ち",
+                "assignee": "松尾 佳奈",
+                "due_date": (today + timedelta(days=10)).isoformat(),
+                "priority": "低",
+                "last_status_changed_at": (today - timedelta(days=7)).isoformat(),
+                "updated_at": (today - timedelta(days=7)).isoformat(),
+                "request_date": (today - timedelta(days=8)).isoformat(),
+            },
+            {
+                "request_id": "REQ-NOTIFY-004",
+                "requester": "完了 太郎",
+                "department": "営業部",
+                "category": "その他",
+                "status": "完了",
+                "assignee": "藤原 直子",
+                "due_date": (today - timedelta(days=3)).isoformat(),
+                "priority": "低",
+                "last_status_changed_at": today.isoformat(),
+                "updated_at": today.isoformat(),
+                "request_date": today.isoformat(),
+            },
+        ]
+    )
+
+    before_due_targets = extract_before_due_targets(df, days_before=3)
+    overdue_targets = extract_overdue_targets(df)
+    unassigned_targets = extract_unassigned_targets(df)
+    waiting_targets = extract_waiting_too_long_targets(df, waiting_days=5)
+
+    assert any(target["request_id"] == "REQ-NOTIFY-001" for target in before_due_targets)
+    assert any(target["request_id"] == "REQ-NOTIFY-002" for target in overdue_targets)
+    assert any(target["request_id"] == "REQ-NOTIFY-002" for target in unassigned_targets)
+    assert any(target["request_id"] == "REQ-NOTIFY-003" for target in waiting_targets)
+    assert not any(target["request_id"] == "REQ-NOTIFY-004" for target in overdue_targets)
+
+    all_targets = extract_notification_targets(df)
+    assert len(all_targets) >= 4
+
+    message = generate_notification_message(
+        notification_type="overdue",
+        inquiry=df.iloc[1].to_dict(),
+        reason="希望期限を過ぎています。",
+    )
+
+    assert "期限超過" in message
+    assert "REQ-NOTIFY-002" in message
+
+    notification_id = save_notification_target(
+        all_targets[0],
+        user_id="U003",
+    )
+
+    assert notification_id.startswith("NTF-")
+
+    print("WBS7通知対象抽出・通知文生成の確認が完了しました。")
+
+
 def main() -> None:
     init_db()
 
@@ -291,6 +396,7 @@ def main() -> None:
     check_faq_public_functions()
     check_requester_filter_functions()
     check_history_functions()
+    check_notification_functions()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 

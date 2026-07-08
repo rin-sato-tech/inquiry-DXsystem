@@ -26,6 +26,7 @@ from src.ui.login_page import show_login_page
 from src.ui.faq_public_page import show_faq_public_page
 from src.ui.requester_home_page import show_requester_home_page
 from src.ui.history_page import show_history_page
+from src.ui.notification_page import show_notification_page
 
 st.set_page_config(
     page_title="社内問い合わせ管理システム",
@@ -76,6 +77,9 @@ def main() -> None:
 
     if page_key == "alert":
         show_alert_page(df)
+
+    elif page_key == "notification":
+        show_notification_page(df)
 
     elif page_key == "inquiry_list":
         show_inquiry_list_page(df)
