@@ -51,6 +51,10 @@ PAGE_CONFIGS: dict[str, PageConfig] = {
         "label": "履歴確認",
         "role_group": "admin",
     },
+        "notification": {
+        "label": "通知対象確認",
+        "role_group": "staff",
+    },
 }
 
 
@@ -63,6 +67,7 @@ ROLE_PAGES: dict[str, list[str]] = {
     ],
     "staff": [
         "alert",
+        "notification",
         "inquiry_list",
         "inquiry_update",
         "faq_admin",
@@ -71,14 +76,15 @@ ROLE_PAGES: dict[str, list[str]] = {
     ],
     "admin": [
         "alert",
+        "notification",
         "inquiry_list",
         "inquiry_update",
         "faq_admin",
         "faq_public",
         "inquiry_create",
         "requester_inquiries",
-        "report",
         "history",
+        "report",
     ],
     "viewer": [
         "report",
