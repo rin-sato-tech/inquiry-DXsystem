@@ -25,6 +25,16 @@ from src.services.requester_service import (
     filter_inquiries_for_requester,
     get_requester_summary,
 )
+from src.services.history_service import (
+    add_inquiry_comment,
+    get_comments_for_requester,
+    get_comments_for_staff,
+    get_operation_logs,
+    get_status_history,
+    record_inquiry_created,
+    record_status_history_if_changed,
+)
+
 
 def check_role_pages() -> None:
     assert "requester_home" in get_available_page_keys("requester")
@@ -134,6 +144,80 @@ def check_requester_filter_functions() -> None:
     print("依頼者向け本人表示ロジックの確認が完了しました。")
 
 
+def check_history_functions() -> None:
+    """WBS6の履歴系サービス関数を確認する。"""
+    inquiries = fetch_all_inquiries()
+
+    if not inquiries:
+        print("問い合わせデータがないため、履歴系テストをスキップします。")
+        return
+
+    request_id = inquiries[0]["request_id"]
+
+    internal_comment_id = add_inquiry_comment(
+        request_id=request_id,
+        comment_body="WBS6スモークテスト用内部コメント",
+        visibility="internal",
+        user_id="U002",
+    )
+
+    requester_comment_id = add_inquiry_comment(
+        request_id=request_id,
+        comment_body="WBS6スモークテスト用依頼者向けコメント",
+        visibility="requester",
+        user_id="U002",
+    )
+
+    staff_comments = get_comments_for_staff(request_id)
+    requester_comments = get_comments_for_requester(request_id)
+
+    assert any(
+        comment["comment_id"] == internal_comment_id
+        for comment in staff_comments
+    )
+    assert any(
+        comment["comment_id"] == requester_comment_id
+        for comment in staff_comments
+    )
+    assert not any(
+        comment["comment_id"] == internal_comment_id
+        for comment in requester_comments
+    )
+    assert any(
+        comment["comment_id"] == requester_comment_id
+        for comment in requester_comments
+    )
+
+    history_id = record_status_history_if_changed(
+        request_id=request_id,
+        old_status="未対応",
+        new_status="対応中",
+        user_id="U002",
+    )
+
+    assert history_id is not None
+
+    status_histories = get_status_history(request_id)
+    assert any(
+        history["history_id"] == history_id
+        for history in status_histories
+    )
+
+    record_inquiry_created(
+        request_id=request_id,
+        user_id="U001",
+    )
+
+    operation_logs = get_operation_logs(limit=100)
+    assert any(
+        log["action"] == "create_inquiry"
+        and log["target_id"] == request_id
+        for log in operation_logs
+    )
+
+    print("WBS6履歴系サービス関数の確認が完了しました。")
+
+
 def main() -> None:
     init_db()
 
@@ -206,6 +290,7 @@ def main() -> None:
     check_role_pages()
     check_faq_public_functions()
     check_requester_filter_functions()
+    check_history_functions()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 
