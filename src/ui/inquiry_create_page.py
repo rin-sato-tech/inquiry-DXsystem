@@ -16,12 +16,25 @@ from src.master_data import (
 )
 from src.ui.components import index_or_zero, render_category_additional_fields
 from src.ui.cache_utils import clear_cache
+from src.services.auth_service import get_current_role, get_current_user
 
 
 def show_inquiry_create_page() -> None:
     """新規問い合わせ登録フォームを表示する。"""
     st.header("新規登録")
     st.caption("DX化後の問い合わせ受付フォームを想定した登録画面です。")
+
+    current_user = get_current_user()
+    current_role = get_current_role()
+
+    default_requester = ""
+    default_department = ""
+
+    if current_user is not None:
+        default_requester = str(current_user.get("user_name", "")).strip()
+        default_department = str(current_user.get("department", "")).strip()
+
+    is_requester = current_role == "requester"
 
     departments = get_departments()
     categories = get_categories()
@@ -47,8 +60,19 @@ def show_inquiry_create_page() -> None:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            requester = st.text_input("依頼者名 *")
-            department = st.selectbox("部署 *", departments)
+            requester = st.text_input(
+                "依頼者名 *",
+                value=default_requester,
+                disabled=is_requester,
+                help="依頼者ロールでは、ログイン中ユーザー名が自動入力されます。",
+            )
+            department = st.selectbox(
+                "部署 *",
+                departments,
+                index=index_or_zero(departments, default_department),
+                disabled=is_requester,
+                help="依頼者ロールでは、ログイン中ユーザーの部署が自動入力されます。",
+            )
             channel = st.selectbox(
                 "受付経路 *",
                 channels,
@@ -70,12 +94,32 @@ def show_inquiry_create_page() -> None:
 
         with col3:
             due_date = st.date_input("希望期限 *", value=default_due_date)
-            assignee_label = st.selectbox("担当者", assignee_options)
-            status = st.selectbox(
-                "ステータス *",
-                statuses,
-                index=index_or_zero(statuses, "未対応"),
-            )
+
+            if is_requester:
+                assignee_label = "未設定"
+                status = "未対応"
+
+                st.text_input(
+                    "担当者",
+                    value="未設定",
+                    disabled=True,
+                    help="担当者は管理部側で設定します。",
+                )
+
+                st.text_input(
+                    "ステータス *",
+                    value="未対応",
+                    disabled=True,
+                    help="新規登録時は未対応として登録されます。",
+                )
+            else:
+                assignee_label = st.selectbox("担当者", assignee_options)
+
+                status = st.selectbox(
+                    "ステータス *",
+                    statuses,
+                    index=index_or_zero(statuses, "未対応"),
+                )
 
         detail = st.text_area("問い合わせ内容 *", height=120)
         missing_info = st.text_area("不足情報・確認事項", height=80)
@@ -89,6 +133,8 @@ def show_inquiry_create_page() -> None:
 
         if not requester.strip():
             errors.append("依頼者名を入力してください。")
+        if not department.strip():
+            errors.append("部署を選択してください。")
         if not detail.strip():
             errors.append("問い合わせ内容を入力してください。")
         if due_date is None:
