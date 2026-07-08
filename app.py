@@ -24,6 +24,7 @@ from src.services.auth_service import (
 from src.ui.auth_components import show_login_status
 from src.ui.login_page import show_login_page
 from src.ui.faq_public_page import show_faq_public_page
+from src.ui.requester_home_page import show_requester_home_page
 
 st.set_page_config(
     page_title="社内問い合わせ管理システム",
@@ -94,11 +95,7 @@ def main() -> None:
         show_report_page(df)
 
     elif page_key == "requester_home":
-        st.header("依頼者トップ")
-        st.info("依頼者トップ画面はWBS5で本格実装します。")
-        st.markdown("- FAQ検索")
-        st.markdown("- 新規問い合わせ")
-        st.markdown("- 自分の問い合わせ確認")
+        show_requester_home_page(df)
 
     elif page_key == "faq_public":
         show_faq_public_page()

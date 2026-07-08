@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pandas as pd
+
 from src.db import (
     fetch_all_inquiries,
     fetch_comments_by_request_id,
@@ -19,7 +21,10 @@ from src.db import (
     increment_faq_view_count,
 )
 from src.services.auth_service import get_available_page_keys
-
+from src.services.requester_service import (
+    filter_inquiries_for_requester,
+    get_requester_summary,
+)
 
 def check_role_pages() -> None:
     assert "requester_home" in get_available_page_keys("requester")
@@ -59,6 +64,74 @@ def check_faq_public_functions() -> None:
     assert int(updated_faq["helpful_count"]) == before_helpful_count + 1
 
     print("FAQ公開関連DB関数の確認が完了しました。")
+
+
+def check_requester_filter_functions() -> None:
+    """依頼者本人の問い合わせ抽出ロジックを確認する。"""
+    test_user = {
+        "user_id": "U001",
+        "user_name": "山田 太郎",
+        "department": "営業部",
+        "role": "requester",
+    }
+
+    df = pd.DataFrame(
+        [
+            {
+                "request_id": "REQ-TEST-001",
+                "requester": "山田 太郎",
+                "department": "営業部",
+                "status": "対応中",
+                "requester_visible": 1,
+                "is_overdue": False,
+            },
+            {
+                "request_id": "REQ-TEST-002",
+                "requester": "山田 太郎",
+                "department": "営業部",
+                "status": "完了",
+                "requester_visible": 1,
+                "is_overdue": False,
+            },
+            {
+                "request_id": "REQ-TEST-003",
+                "requester": "山田 太郎",
+                "department": "営業部",
+                "status": "未対応",
+                "requester_visible": 0,
+                "is_overdue": True,
+            },
+            {
+                "request_id": "REQ-TEST-004",
+                "requester": "佐藤 花子",
+                "department": "管理部",
+                "status": "対応中",
+                "requester_visible": 1,
+                "is_overdue": False,
+            },
+        ]
+    )
+
+    result = filter_inquiries_for_requester(
+        df=df,
+        user=test_user,
+        include_hidden=False,
+    )
+
+    assert len(result) == 2
+    assert set(result["request_id"].tolist()) == {
+        "REQ-TEST-001",
+        "REQ-TEST-002",
+    }
+
+    summary = get_requester_summary(result)
+
+    assert summary["total"] == 2
+    assert summary["open"] == 1
+    assert summary["completed"] == 1
+    assert summary["overdue"] == 0
+
+    print("依頼者向け本人表示ロジックの確認が完了しました。")
 
 
 def main() -> None:
@@ -132,6 +205,7 @@ def main() -> None:
 
     check_role_pages()
     check_faq_public_functions()
+    check_requester_filter_functions()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 
