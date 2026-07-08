@@ -22,7 +22,12 @@ def show_login_page() -> None:
         return
 
     user_options = {
-        f'{user["user_name"]}（{user["department"]} / {user["role"]}）': user["user_id"]
+        f'{user["user_id"]}: {user["user_name"]}（{user["department"]} / {user["role"]}）': user["user_id"]
+        for user in users
+    }
+
+    id_to_user = {
+        user["user_id"]: user
         for user in users
     }
 
@@ -32,10 +37,7 @@ def show_login_page() -> None:
     )
 
     selected_user_id = user_options[selected_label]
-
-    selected_user = next(
-        user for user in users if user["user_id"] == selected_user_id
-    )
+    selected_user = id_to_user.get(selected_user_id)
 
     st.markdown("### 選択中ユーザー")
     st.write(f'ユーザーID: {selected_user["user_id"]}')
@@ -44,6 +46,10 @@ def show_login_page() -> None:
     st.write(f'ロール: {selected_user["role"]}')
 
     if st.button("このユーザーでログイン", type="primary"):
-        login_user(selected_user_id)
-        st.success("ログインしました。")
+        try:
+            login_user(selected_user_id)
+        except ValueError as error:
+            st.error(str(error))
+            return
+
         st.rerun()
