@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from pathlib import Path
+import tempfile
+
 import pandas as pd
 
 from src.db import (
@@ -45,6 +48,17 @@ from src.services.notification_service import (
     generate_notification_message,
     save_notification_target,
 )
+from src.services.report_service import (
+    get_ver3_export_dataframes,
+    summarize_comments_by_visibility,
+    summarize_faq_by_category,
+    summarize_notification_logs_by_status,
+    summarize_notification_logs_by_type,
+    summarize_operation_logs_by_action,
+    summarize_status_history_by_new_status,
+    summarize_ver3_metrics,
+)
+from src.tableau_export import export_ver3_tableau_csvs
 
 
 def check_role_pages() -> None:
@@ -323,6 +337,60 @@ def check_notification_functions() -> None:
     print("WBS7通知対象抽出・通知文生成の確認が完了しました。")
 
 
+def check_ver3_report_functions() -> None:
+    """WBS8のVer.3集計・CSV出力関数を確認する。"""
+    metrics = summarize_ver3_metrics()
+
+    required_keys = {
+        "total_faq",
+        "public_faq",
+        "private_faq",
+        "total_view_count",
+        "total_helpful_count",
+        "helpful_rate",
+        "comment_count",
+        "requester_comment_count",
+        "internal_comment_count",
+        "status_history_count",
+        "operation_log_count",
+        "notification_log_count",
+    }
+
+    assert required_keys.issubset(metrics.keys())
+
+    assert summarize_faq_by_category() is not None
+    assert summarize_comments_by_visibility() is not None
+    assert summarize_status_history_by_new_status() is not None
+    assert summarize_operation_logs_by_action() is not None
+    assert summarize_notification_logs_by_type() is not None
+    assert summarize_notification_logs_by_status() is not None
+
+    export_dataframes = get_ver3_export_dataframes()
+
+    expected_exports = {
+        "tableau_faq_items",
+        "tableau_inquiry_comments",
+        "tableau_status_history",
+        "tableau_operation_logs",
+        "tableau_notification_logs",
+    }
+
+    assert expected_exports.issubset(export_dataframes.keys())
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_paths = export_ver3_tableau_csvs(
+            export_dataframes,
+            output_dir=Path(temp_dir),
+        )
+
+        assert len(output_paths) == len(export_dataframes)
+
+        for output_path in output_paths:
+            assert output_path.exists()
+
+    print("WBS8 Ver.3集計・Tableau CSV出力関数の確認が完了しました。")
+
+
 def main() -> None:
     init_db()
 
@@ -397,6 +465,7 @@ def main() -> None:
     check_requester_filter_functions()
     check_history_functions()
     check_notification_functions()
+    check_ver3_report_functions()
 
     print("Ver.3 DBスモークテストが正常に完了しました。")
 

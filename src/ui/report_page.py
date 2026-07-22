@@ -18,7 +18,17 @@ from src.summary import (
     requester_visible_summary,
     summarize_ver2_metrics,
 )
-from src.tableau_export import export_tableau_csv, make_tableau_dataframe, to_csv_bytes
+from src.tableau_export import export_tableau_csv, make_tableau_dataframe, to_csv_bytes, export_ver3_tableau_csvs
+from src.services.report_service import (
+    get_ver3_export_dataframes,
+    summarize_comments_by_visibility,
+    summarize_faq_by_category,
+    summarize_notification_logs_by_status,
+    summarize_notification_logs_by_type,
+    summarize_operation_logs_by_action,
+    summarize_status_history_by_new_status,
+    summarize_ver3_metrics,
+)
 
 def show_tableau_export_section(df: pd.DataFrame) -> None:
     """Tableau連携用CSVの出力UIを表示する。"""
@@ -67,6 +77,135 @@ def show_tableau_export_section(df: pd.DataFrame) -> None:
             except Exception as exc:
                 st.error("CSVの保存に失敗しました。")
                 st.exception(exc)
+
+
+def show_ver3_report_section() -> None:
+    """Ver.3追加機能の集計UIを表示する。"""
+
+    st.markdown("### Ver.3追加機能の集計")
+    st.caption(
+        "公開FAQ、コメント履歴、ステータス履歴、操作ログ、通知ログの状況を確認します。"
+    )
+
+    metrics = summarize_ver3_metrics()
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("公開FAQ", metrics["public_faq"])
+    col2.metric("非公開FAQ", metrics["private_faq"])
+    col3.metric("FAQ閲覧数", metrics["total_view_count"])
+    col4.metric("FAQ役立ち率", f'{metrics["helpful_rate"]}%')
+
+    col5, col6, col7, col8 = st.columns(4)
+
+    col5.metric("コメント履歴", metrics["comment_count"])
+    col6.metric("ステータス履歴", metrics["status_history_count"])
+    col7.metric("操作ログ", metrics["operation_log_count"])
+    col8.metric("通知ログ", metrics["notification_log_count"])
+
+    st.markdown("#### FAQカテゴリ別集計")
+    faq_category_df = summarize_faq_by_category()
+
+    if faq_category_df.empty:
+        st.info("FAQ集計対象がありません。")
+    else:
+        st.dataframe(faq_category_df, width="stretch", hide_index=True)
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown("#### コメント表示区分別件数")
+        comments_df = summarize_comments_by_visibility()
+
+        if comments_df.empty:
+            st.info("コメント履歴はまだありません。")
+        else:
+            st.dataframe(comments_df, width="stretch", hide_index=True)
+
+        st.markdown("#### 操作種別別件数")
+        operation_df = summarize_operation_logs_by_action()
+
+        if operation_df.empty:
+            st.info("操作ログはまだありません。")
+        else:
+            st.dataframe(operation_df, width="stretch", hide_index=True)
+
+    with col_b:
+        st.markdown("#### 変更後ステータス別件数")
+        status_df = summarize_status_history_by_new_status()
+
+        if status_df.empty:
+            st.info("ステータス履歴はまだありません。")
+        else:
+            st.dataframe(status_df, width="stretch", hide_index=True)
+
+        st.markdown("#### 通知種別別件数")
+        notification_type_df = summarize_notification_logs_by_type()
+
+        if notification_type_df.empty:
+            st.info("通知ログはまだありません。")
+        else:
+            st.dataframe(notification_type_df, width="stretch", hide_index=True)
+
+    st.markdown("#### 通知状態別件数")
+    notification_status_df = summarize_notification_logs_by_status()
+
+    if notification_status_df.empty:
+        st.info("通知ログはまだありません。")
+    else:
+        st.dataframe(notification_status_df, width="stretch", hide_index=True)
+
+
+def show_ver3_tableau_export_section() -> None:
+    """Ver.3追加テーブルのTableau用CSV出力UIを表示する。"""
+    st.divider()
+    st.markdown("### Ver.3 Tableau用CSV出力")
+    st.caption(
+        "Ver.3で追加したFAQ・コメント履歴・ステータス履歴・操作ログ・通知ログを、"
+        "Tableauで扱いやすいようにテーブル別CSVとして出力します。"
+    )
+
+    export_dataframes = get_ver3_export_dataframes()
+
+    summary_rows = [
+        {
+            "出力ファイル": f"{name}.csv",
+            "行数": len(df),
+            "列数": len(df.columns),
+        }
+        for name, df in export_dataframes.items()
+    ]
+
+    st.dataframe(
+        pd.DataFrame(summary_rows),
+        width="stretch",
+        hide_index=True,
+    )
+
+    with st.expander("Ver.3出力データのプレビュー"):
+        selected_name = st.selectbox(
+            "プレビューするテーブル",
+            list(export_dataframes.keys()),
+        )
+
+        preview_df = export_dataframes[selected_name]
+
+        if preview_df.empty:
+            st.info("このテーブルにはまだデータがありません。")
+        else:
+            st.dataframe(
+                preview_df.head(20),
+                width="stretch",
+                hide_index=True,
+            )
+
+    if st.button("Ver.3 Tableau用CSVを保存"):
+        output_paths = export_ver3_tableau_csvs(export_dataframes)
+
+        st.success("Ver.3 Tableau用CSVを保存しました。")
+
+        for path in output_paths:
+            st.write(f"- {path}")
 
 
 def show_report_page(df: pd.DataFrame) -> None:
@@ -255,4 +394,8 @@ def show_report_page(df: pd.DataFrame) -> None:
 
     st.divider()
 
+    show_ver3_report_section()
+
     show_tableau_export_section(df)
+
+    show_ver3_tableau_export_section()

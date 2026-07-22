@@ -258,3 +258,20 @@ def export_tableau_csv(
     tableau_df.to_csv(output_path, index=False, encoding="utf-8-sig")
 
     return output_path
+
+
+def export_ver3_tableau_csvs(
+    dataframes: dict[str, pd.DataFrame],
+    output_dir: Path = Path("data"),
+) -> list[Path]:
+    """Ver.3追加テーブルをTableau用CSVとして出力する。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_paths: list[Path] = []
+
+    for name, df in dataframes.items():
+        output_path = output_dir / f"{name}.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+        output_paths.append(output_path)
+
+    return output_paths

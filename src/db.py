@@ -1084,6 +1084,36 @@ def increment_faq_helpful_count(faq_id: str) -> None:
         conn.commit()
 
 
+def fetch_all_inquiry_comments(limit: int = 1000) -> list[dict[str, Any]]:
+    """問い合わせコメント履歴を新しい順に取得する。"""
+    sql = """
+    SELECT *
+    FROM inquiry_comments
+    ORDER BY created_at DESC, comment_id DESC
+    LIMIT ?
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (limit,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def fetch_all_status_history(limit: int = 1000) -> list[dict[str, Any]]:
+    """ステータス変更履歴を新しい順に取得する。"""
+    sql = """
+    SELECT *
+    FROM status_history
+    ORDER BY changed_at DESC, history_id DESC
+    LIMIT ?
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, (limit,)).fetchall()
+
+    return [dict(row) for row in rows]
+
+
 if __name__ == "__main__":
     init_db()
     print(f"DBを初期化しました: {DB_PATH}")
