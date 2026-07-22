@@ -91,9 +91,9 @@ def show_notification_page(df: pd.DataFrame) -> None:
 
         target_options = {
             (
-                f'{target["notification_label"]}｜'
-                f'{target["request_id"]}｜'
-                f'{target["requester"]}｜'
+                f'{target["notification_label"]}|'
+                f'{target["request_id"]}|'
+                f'{target["requester"]}|'
                 f'{target["reason"]}'
             ): index
             for index, target in enumerate(targets)
@@ -143,9 +143,9 @@ def show_notification_page(df: pd.DataFrame) -> None:
 
     log_options = {
         (
-            f'{log["notification_id"]}｜'
-            f'{log["notification_type"]}｜'
-            f'{log["status"]}｜'
+            f'{log["notification_id"]}|'
+            f'{log["notification_type"]}|'
+            f'{log["status"]}|'
             f'{log["request_id"]}'
         ): log["notification_id"]
         for log in logs
