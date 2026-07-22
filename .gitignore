@@ -30,7 +30,7 @@ data/*.sqlite
 data/*.sqlite3
 
 # Tableau出力CSVなど再生成ファイル
-data/tableau_output.csv
+data/tableau_*.csv
 
 # バックアップ
 backups/
